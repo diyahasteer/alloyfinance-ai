@@ -1,127 +1,127 @@
 transaction_id,timestamp,amount,merchant_name,merchant_category,spending_category,transaction_type,payment_method,city,country,currency
-1c6e6113-176f-4091-a67b-402a1d04467d,2024-02-14T02:59:18Z,-168.32,Fine Dining,restaurant,dining,debit,credit_card,San Antonio,US,USD
-18617887-20b1-419b-a017-d262111818ff,2024-02-15T02:50:39Z,-64.18,Spotify,streaming_service,subscriptions,debit,credit_card,Washington,US,USD
-2b542861-55ed-4e00-a619-35ed564b7324,2024-03-08T15:02:15Z,4537.49,Innovate X,employer,income,credit,bank_transfer,Fort Worth,US,USD
-76df516f-773a-4933-91b7-7e63b65a507a,2024-04-18T10:39:13Z,-166.50,Whole Foods,supermarket,groceries,debit,debit_card,Austin,US,USD
-780966a0-a02e-41fc-8efd-40742d4a5c53,2024-04-03T18:04:19Z,-216.71,Whole Foods,supermarket,groceries,debit,credit_card,Austin,US,USD
-60965306-05ec-4e33-90d1-b55239e72648,2024-01-20T03:36:31Z,-25.10,Newspaper Digital,subscription_service,subscriptions,debit,debit_card,Washington,US,USD
-3b86940a-ff43-4402-9908-0430032e557b,2024-03-05T01:54:33Z,-1104.99,City Properties,landlord,rent,debit,bank_transfer,Houston,US,USD
-9f379659-c292-491a-b67f-72f5d1341490,2024-02-09T08:52:19Z,-135.25,Sushi House,restaurant,dining,debit,mobile_wallet,Austin,US,USD
-6d956a95-580a-47d0-8b1a-096b42b15e45,2024-04-19T06:04:36Z,-35.13,Hulu,streaming_service,subscriptions,debit,debit_card,San Antonio,US,USD
-d91a134a-9ef8-4f80-99c5-8f645366ef77,2024-04-20T21:49:50Z,-69.54,Kroger,supermarket,groceries,debit,debit_card,San Diego,US,USD
-44516d2b-1031-4dd9-a359-0097103a4b08,2024-04-23T10:48:47Z,-124.97,Amazon.com,ecommerce,shopping,debit,debit_card,Jacksonville,US,USD
-707e77a2-f674-4b52-959c-883a9103ee93,2024-04-01T04:22:15Z,-169.17,Pizza Palace,restaurant,dining,debit,cash,Austin,US,USD
-e1b82f0c-519b-449b-b98a-77e8a3794b15,2024-02-15T09:27:07Z,-109.80,Target Online,ecommerce,shopping,debit,credit_card,Phoenix,US,USD
-40a02c34-b25b-4395-827c-9b8e217199fc,2024-02-01T23:54:19Z,-14.97,Disney+,streaming_service,subscriptions,debit,credit_card,Washington,US,USD
-d2a13894-3d90-48e0-a7d1-037130c2390a,2024-04-28T07:22:21Z,-179.91,Pizza Palace,restaurant,dining,debit,debit_card,Los Angeles,US,USD
-f082e6ef-e918-466d-96f7-b8423f04499b,2024-03-24T18:31:01Z,-94.12,Trader Joe's,supermarket,groceries,debit,debit_card,New York,US,USD
-ff9e30a5-f851-404c-836e-d713c54f469a,2024-03-08T00:54:57Z,-121.73,Whole Foods,supermarket,groceries,debit,credit_card,Philadelphia,US,USD
-9c8a1438-e5ff-43b6-ae9d-09c09d57a4a9,2024-02-18T16:03:04Z,-13.79,Gym Membership,subscription_service,subscriptions,debit,debit_card,Houston,US,USD
-d67c5197-0130-4e3a-969c-29d9cf9e578c,2024-03-07T14:48:54Z,-140.23,Cafe Blend,restaurant,dining,debit,debit_card,San Diego,US,USD
-92a83002-3f19-4828-98e9-51dd4ed88f44,2024-04-10T12:00:19Z,-123.00,City Water Dept,utility_provider,utilities,debit,credit_card,Charlotte,US,USD
-210350ee-c81b-4fc6-b7ff-10526e033f7b,2024-03-12T10:14:46Z,-14.65,Burger Joint,restaurant,dining,debit,mobile_wallet,Austin,US,USD
-43e0d3b6-96b1-4c4f-96a8-f86a033f23b2,2024-01-26T21:40:54Z,-110.15,Trader Joe's,supermarket,groceries,debit,debit_card,Charlotte,US,USD
-4e05b53d-2490-410a-b32b-3543979b9b4f,2024-02-17T03:05:31Z,-175.76,Local Eatery,restaurant,dining,debit,debit_card,New York,US,USD
-6c841c61-460d-4df7-8b01-9a7c6f0590a3,2024-03-10T02:37:34Z,-107.03,Zappos,ecommerce,shopping,debit,credit_card,San Diego,US,USD
-e16a241f-d2ef-450f-9669-0260714b9c1d,2024-03-07T05:22:20Z,-135.25,Publix,supermarket,groceries,debit,mobile_wallet,Dallas,US,USD
-778fb980-874b-4a5f-b51f-503a45c602ea,2024-01-09T03:47:18Z,-147.28,Whole Foods,supermarket,groceries,debit,debit_card,Philadelphia,US,USD
-1d5d1c23-f308-4e1b-b461-26b6ef943e8d,2024-03-11T09:44:48Z,-60.89,Aldi,supermarket,groceries,debit,credit_card,San Antonio,US,USD
-0fcb6495-2c83-4903-80e3-6a2c26f0ac11,2024-03-24T10:48:47Z,-16.99,Disney+,streaming_service,subscriptions,debit,credit_card,Washington,US,USD
-5c3e03cf-3e0e-473d-82d2-282b0e6e73a6,2024-04-12T00:09:50Z,-147.45,Zappos,ecommerce,shopping,debit,credit_card,Philadelphia,US,USD
-e0e29b14-996b-4f9e-a035-717088b776c5,2024-03-02T13:46:25Z,-38.41,Gym Membership,subscription_service,subscriptions,debit,credit_card,San Diego,US,USD
-0f119097-f131-4171-8894-39f28d7aa648,2024-02-23T06:58:39Z,-135.53,CVS Pharmacy,pharmacy,healthcare,debit,debit_card,Jacksonville,US,USD
-38656795-c1e1-4566-a320-c02055ae7385,2024-02-25T01:57:37Z,-11.45,Hulu,streaming_service,subscriptions,debit,debit_card,Dallas,US,USD
-1723f38d-ec82-4148-80f3-b6c86e0fc2f1,2024-01-26T20:20:47Z,-141.59,Kroger,supermarket,groceries,debit,debit_card,Austin,US,USD
-c142e078-4394-4d1a-be29-d6e4231b66fe,2024-02-14T01:13:06Z,-147.88,Cafe Blend,restaurant,dining,debit,credit_card,Houston,US,USD
-b8c3539e-d306-44b4-8395-9f572a15f013,2024-01-13T10:04:13Z,-143.04,Trader Joe's,supermarket,groceries,debit,debit_card,San Jose,US,USD
-2d6ac474-0679-45f8-8427-d0d5b5b9e05e,2024-03-02T13:14:40Z,-134.02,Burger Joint,restaurant,dining,debit,mobile_wallet,Austin,US,USD
-850942aa-b82b-43ac-9304-c5a478b0d2d3,2024-01-20T09:47:04Z,-129.43,Safeway,supermarket,groceries,debit,credit_card,Dallas,US,USD
-571d9d59-fc50-4966-9e05-24e5a9c049d5,2024-02-17T03:52:13Z,-33.58,Gym Membership,subscription_service,subscriptions,debit,debit_card,Houston,US,USD
-185e7834-8c7e-41df-a7b5-0728c8942971,2024-01-10T12:04:53Z,-140.24,Starbucks,restaurant,dining,debit,mobile_wallet,New York,US,USD
-298a0d78-ef22-44b7-a367-170f3f338779,2024-04-02T02:00:36Z,-39.95,Hulu,streaming_service,subscriptions,debit,credit_card,Washington,US,USD
-1c9c4384-5690-410a-84ea-9d240d12e84d,2024-04-22T04:26:40Z,-143.20,Local Eatery,restaurant,dining,debit,mobile_wallet,Phoenix,US,USD
-a04b50c0-6d45-420a-85d5-9430c6a59600,2024-01-09T03:47:18Z,-110.19,Trader Joe's,supermarket,groceries,debit,debit_card,Philadelphia,US,USD
-40a1b808-7278-43e4-8f4b-2e9127d42544,2024-02-09T08:52:19Z,-21.87,Hulu,streaming_service,subscriptions,debit,debit_card,Washington,US,USD
-83187a55-33dd-45f5-b6d4-d576b5107e38,2024-01-23T15:24:29Z,-133.56,Pizza Palace,restaurant,dining,debit,debit_card,San Antonio,US,USD
-d8f16b23-74b8-4c6d-9cf3-f513f17c802f,2024-02-14T02:59:18Z,-16.99,Disney+,streaming_service,subscriptions,debit,credit_card,San Antonio,US,USD
-c9213197-e85c-42b7-a877-c918ee08c160,2024-02-15T09:27:07Z,-169.80,Target Online,ecommerce,shopping,debit,credit_card,Phoenix,US,USD
-1c58742b-586f-473d-8e6d-d129035201a1,2024-04-20T04:22:15Z,-16.29,Spotify,streaming_service,subscriptions,debit,debit_card,Austin,US,USD
-8c02c918-6362-43ce-9a84-07d0f074d6ea,2024-03-24T18:31:01Z,-140.40,Trader Joe's,supermarket,groceries,debit,debit_card,New York,US,USD
-1627c2f0-1c00-4786-bb56-02a832d29486,2024-04-03T02:00:36Z,-142.18,Whole Foods,supermarket,groceries,debit,debit_card,Washington,US,USD
-c7fb4a77-941f-4f65-8b39-16a70e872d3e,2024-01-26T21:40:54Z,-110.15,Trader Joe's,supermarket,groceries,debit,debit_card,Charlotte,US,USD
-825e6c78-6228-44d5-afc7-f0b35e07675f,2024-02-17T03:05:31Z,-175.76,Local Eatery,restaurant,dining,debit,debit_card,New York,US,USD
-241a87b1-b586-4e50-93a9-e85d450ae702,2024-03-10T02:37:34Z,-107.03,Zappos,ecommerce,shopping,debit,credit_card,San Diego,US,USD
-a0e1c64d-7a54-469b-8e50-612b7a9f8f4a,2024-03-07T05:22:20Z,-135.25,Publix,supermarket,groceries,debit,mobile_wallet,Dallas,US,USD
-215b2e3e-42c2-4876-b6ae-22572b22f71f,2024-01-09T03:47:18Z,-147.28,Whole Foods,supermarket,groceries,debit,debit_card,Philadelphia,US,USD
-780966a0-a02e-41fc-8efd-40742d4a5c53,2024-04-03T18:04:19Z,-216.71,Whole Foods,supermarket,groceries,debit,credit_card,Austin,US,USD
-60965306-05ec-4e33-90d1-b55239e72648,2024-01-20T03:36:31Z,-25.10,Newspaper Digital,subscription_service,subscriptions,debit,debit_card,Washington,US,USD
-3b86940a-ff43-4402-9908-0430032e557b,2024-03-05T01:54:33Z,-1104.99,City Properties,landlord,rent,debit,bank_transfer,Houston,US,USD
-9f379659-c292-491a-b67f-72f5d1341490,2024-02-09T08:52:19Z,-135.25,Sushi House,restaurant,dining,debit,mobile_wallet,Austin,US,USD
-6d956a95-580a-47d0-8b1a-096b42b15e45,2024-04-19T06:04:36Z,-35.13,Hulu,streaming_service,subscriptions,debit,debit_card,San Antonio,US,USD
-d91a134a-9ef8-4f80-99c5-8f645366ef77,2024-04-20T21:49:50Z,-69.54,Kroger,supermarket,groceries,debit,debit_card,San Diego,US,USD
-44516d2b-1031-4dd9-a359-0097103a4b08,2024-04-23T10:48:47Z,-124.97,Amazon.com,ecommerce,shopping,debit,debit_card,Jacksonville,US,USD
-707e77a2-f674-4b52-959c-883a9103ee93,2024-04-01T04:22:15Z,-169.17,Pizza Palace,restaurant,dining,debit,cash,Austin,US,USD
-e1b82f0c-519b-449b-b98a-77e8a3794b15,2024-02-15T09:27:07Z,-109.80,Target Online,ecommerce,shopping,debit,credit_card,Phoenix,US,USD
-40a02c34-b25b-4395-827c-9b8e217199fc,2024-02-01T23:54:19Z,-14.97,Disney+,streaming_service,subscriptions,debit,credit_card,Washington,US,USD
-d2a13894-3d90-48e0-a7d1-037130c2390a,2024-04-28T07:22:21Z,-179.91,Pizza Palace,restaurant,dining,debit,debit_card,Los Angeles,US,USD
-f082e6ef-e918-466d-96f7-b8423f04499b,2024-03-24T18:31:01Z,-94.12,Trader Joe's,supermarket,groceries,debit,debit_card,New York,US,USD
-ff9e30a5-f851-404c-836e-d713c54f469a,2024-03-08T00:54:57Z,-121.73,Whole Foods,supermarket,groceries,debit,credit_card,Philadelphia,US,USD
-9c8a1438-e5ff-43b6-ae9d-09c09d57a4a9,2024-02-18T16:03:04Z,-13.79,Gym Membership,subscription_service,subscriptions,debit,debit_card,Houston,US,USD
-d67c5197-0130-4e3a-969c-29d9cf9e578c,2024-03-07T14:48:54Z,-140.23,Cafe Blend,restaurant,dining,debit,debit_card,San Diego,US,USD
-92a83002-3f19-4828-98e9-51dd4ed88f44,2024-04-10T12:00:19Z,-123.00,City Water Dept,utility_provider,utilities,debit,credit_card,Charlotte,US,USD
-210350ee-c81b-4fc6-b7ff-10526e033f7b,2024-03-12T10:14:46Z,-14.65,Burger Joint,restaurant,dining,debit,mobile_wallet,Austin,US,USD
-43e0d3b6-96b1-4c4f-96a8-f86a033f23b2,2024-01-26T21:40:54Z,-110.15,Trader Joe's,supermarket,groceries,debit,debit_card,Charlotte,US,USD
-4e05b53d-2490-410a-b32b-3543979b9b4f,2024-02-17T03:05:31Z,-175.76,Local Eatery,restaurant,dining,debit,debit_card,New York,US,USD
-6c841c61-460d-4df7-8b01-9a7c6f0590a3,2024-03-10T02:37:34Z,-107.03,Zappos,ecommerce,shopping,debit,credit_card,San Diego,US,USD
-e16a241f-d2ef-450f-9669-0260714b9c1d,2024-03-07T05:22:20Z,-135.25,Publix,supermarket,groceries,debit,mobile_wallet,Dallas,US,USD
-778fb980-874b-4a5f-b51f-503a45c602ea,2024-01-09T03:47:18Z,-147.28,Whole Foods,supermarket,groceries,debit,debit_card,Philadelphia,US,USD
-1d5d1c23-f308-4e1b-b461-26b6ef943e8d,2024-03-11T09:44:48Z,-60.89,Aldi,supermarket,groceries,debit,credit_card,San Antonio,US,USD
-0fcb6495-2c83-4903-80e3-6a2c26f0ac11,2024-03-24T10:48:47Z,-16.99,Disney+,streaming_service,subscriptions,debit,credit_card,Washington,US,USD
-5c3e03cf-3e0e-473d-82d2-282b0e6e73a6,2024-04-12T00:09:50Z,-147.45,Zappos,ecommerce,shopping,debit,credit_card,Philadelphia,US,USD
-e0e29b14-996b-4f9e-a035-717088b776c5,2024-03-02T13:46:25Z,-38.41,Gym Membership,subscription_service,subscriptions,debit,credit_card,San Diego,US,USD
-0f119097-f131-4171-8894-39f28d7aa648,2024-02-23T06:58:39Z,-135.53,CVS Pharmacy,pharmacy,healthcare,debit,debit_card,Jacksonville,US,USD
-38656795-c1e1-4566-a320-c02055ae7385,2024-02-25T01:57:37Z,-11.45,Hulu,streaming_service,subscriptions,debit,debit_card,Dallas,US,USD
-1723f38d-ec82-4148-80f3-b6c86e0fc2f1,2024-01-26T20:20:47Z,-141.59,Kroger,supermarket,groceries,debit,debit_card,Austin,US,USD
-c142e078-4394-4d1a-be29-d6e4231b66fe,2024-02-14T01:13:06Z,-147.88,Cafe Blend,restaurant,dining,debit,credit_card,Houston,US,USD
-b8c3539e-d306-44b4-8395-9f572a15f013,2024-01-13T10:04:13Z,-143.04,Trader Joe's,supermarket,groceries,debit,debit_card,San Jose,US,USD
-2d6ac474-0679-45f8-8427-d0d5b5b9e05e,2024-03-02T13:14:40Z,-134.02,Burger Joint,restaurant,dining,debit,mobile_wallet,Austin,US,USD
-850942aa-b82b-43ac-9304-c5a478b0d2d3,2024-01-20T09:47:04Z,-129.43,Safeway,supermarket,groceries,debit,credit_card,Dallas,US,USD
-571d9d59-fc50-4966-9e05-24e5a9c049d5,2024-02-17T03:52:13Z,-33.58,Gym Membership,subscription_service,subscriptions,debit,debit_card,Houston,US,USD
-185e7834-8c7e-41df-a7b5-0728c8942971,2024-01-10T12:04:53Z,-140.24,Starbucks,restaurant,dining,debit,mobile_wallet,New York,US,USD
-298a0d78-ef22-44b7-a367-170f3f338779,2024-04-02T02:00:36Z,-39.95,Hulu,streaming_service,subscriptions,debit,credit_card,Washington,US,USD
-1c9c4384-5690-410a-84ea-9d240d12e84d,2024-04-22T04:26:40Z,-143.20,Local Eatery,restaurant,dining,debit,mobile_wallet,Phoenix,US,USD
-a04b50c0-6d45-420a-85d5-9430c6a59600,2024-01-09T03:47:18Z,-110.19,Trader Joe's,supermarket,groceries,debit,debit_card,Philadelphia,US,USD
-40a1b808-7278-43e4-8f4b-2e9127d42544,2024-02-09T08:52:19Z,-21.87,Hulu,streaming_service,subscriptions,debit,debit_card,Washington,US,USD
-83187a55-33dd-45f5-b6d4-d576b5107e38,2024-01-23T15:24:29Z,-133.56,Pizza Palace,restaurant,dining,debit,debit_card,San Antonio,US,USD
-d8f16b23-74b8-4c6d-9cf3-f513f17c802f,2024-02-14T02:59:18Z,-16.99,Disney+,streaming_service,subscriptions,debit,credit_card,San Antonio,US,USD
-c9213197-e85c-42b7-a877-c918ee08c160,2024-02-15T09:27:07Z,-169.80,Target Online,ecommerce,shopping,debit,credit_card,Phoenix,US,USD
-1c58742b-586f-473d-8e6d-d129035201a1,2024-04-20T04:22:15Z,-16.29,Spotify,streaming_service,subscriptions,debit,debit_card,Austin,US,USD
-8c02c918-6362-43ce-9a84-07d0f074d6ea,2024-03-24T18:31:01Z,-140.40,Trader Joe's,supermarket,groceries,debit,debit_card,New York,US,USD
-1627c2f0-1c00-4786-bb56-02a832d29486,2024-04-03T02:00:36Z,-142.18,Whole Foods,supermarket,groceries,debit,debit_card,Washington,US,USD
-c7fb4a77-941f-4f65-8b39-16a70e872d3e,2024-01-26T21:40:54Z,-110.15,Trader Joe's,supermarket,groceries,debit,debit_card,Charlotte,US,USD
-825e6c78-6228-44d5-afc7-f0b35e07675f,2024-02-17T03:05:31Z,-175.76,Local Eatery,restaurant,dining,debit,debit_card,New York,US,USD
-241a87b1-b586-4e50-93a9-e85d450ae702,2024-03-10T02:37:34Z,-107.03,Zappos,ecommerce,shopping,debit,credit_card,San Diego,US,USD
-a0e1c64d-7a54-469b-8e50-612b7a9f8f4a,2024-03-07T05:22:20Z,-135.25,Publix,supermarket,groceries,debit,mobile_wallet,Dallas,US,USD
-215b2e3e-42c2-4876-b6ae-22572b22f71f,2024-01-09T03:47:18Z,-147.28,Whole Foods,supermarket,groceries,debit,debit_card,Philadelphia,US,USD
-1d5d1c23-f308-4e1b-b461-26b6ef943e8d,2024-03-11T09:44:48Z,-60.89,Aldi,supermarket,groceries,debit,credit_card,San Antonio,US,USD
-0fcb6495-2c83-4903-80e3-6a2c26f0ac11,2024-03-24T10:48:47Z,-16.99,Disney+,streaming_service,subscriptions,debit,credit_card,Washington,US,USD
-5c3e03cf-3e0e-473d-82d2-282b0e6e73a6,2024-04-12T00:09:50Z,-147.45,Zappos,ecommerce,shopping,debit,credit_card,Philadelphia,US,USD
-e0e29b14-996b-4f9e-a035-717088b776c5,2024-03-02T13:46:25Z,-38.41,Gym Membership,subscription_service,subscriptions,debit,credit_card,San Diego,US,USD
-0f119097-f131-4171-8894-39f28d7aa648,2024-02-23T06:58:39Z,-135.53,CVS Pharmacy,pharmacy,healthcare,debit,debit_card,Jacksonville,US,USD
-38656795-c1e1-4566-a320-c02055ae7385,2024-02-25T01:57:37Z,-11.45,Hulu,streaming_service,subscriptions,debit,debit_card,Dallas,US,USD
-1723f38d-ec82-4148-80f3-b6c86e0fc2f1,2024-01-26T20:20:47Z,-141.59,Kroger,supermarket,groceries,debit,debit_card,Austin,US,USD
-c142e078-4394-4d1a-be29-d6e4231b66fe,2024-02-14T01:13:06Z,-147.88,Cafe Blend,restaurant,dining,debit,credit_card,Houston,US,USD
-b8c3539e-d306-44b4-8395-9f572a15f013,2024-01-13T10:04:13Z,-143.04,Trader Joe's,supermarket,groceries,debit,debit_card,San Jose,US,USD
-2d6ac474-0679-45f8-8427-d0d5b5b9e05e,2024-03-02T13:14:40Z,-134.02,Burger Joint,restaurant,dining,debit,mobile_wallet,Austin,US,USD
-850942aa-b82b-43ac-9304-c5a478b0d2d3,2024-01-20T09:47:04Z,-129.43,Safeway,supermarket,groceries,debit,credit_card,Dallas,US,USD
-571d9d59-fc50-4966-9e05-24e5a9c049d5,2024-02-17T03:52:13Z,-33.58,Gym Membership,subscription_service,subscriptions,debit,debit_card,Houston,US,USD
-185e7834-8c7e-41df-a7b5-0728c8942971,2024-01-10T12:04:53Z,-140.24,Starbucks,restaurant,dining,debit,mobile_wallet,New York,US,USD
-298a0d78-ef22-44b7-a367-170f3f338779,2024-04-02T02:00:36Z,-39.95,Hulu,streaming_service,subscriptions,debit,credit_card,Washington,US,USD
-1c9c4384-5690-410a-84ea-9d240d12e84d,2024-04-22T04:26:40Z,-143.20,Local Eatery,restaurant,dining,debit,mobile_wallet,Phoenix,US,USD
-a04b50c0-6d45-420a-85d5-9430c6a59600,2024-01-09T03:47:18Z,-110.19,Trader Joe's,supermarket,groceries,debit,debit_card,Philadelphia,US,USD
-40a1b808-7278-43e4-8f4b-2e9127d42544,2024-02-09T08:52:19Z,-21.87,Hulu,streaming_service,subscriptions,debit,debit_card,Washington,US,USD
-83187a55-33dd-45f5-b6d4-d576b5107e38,2024-01-23T15:24:29Z,-133.56,Pizza Palace,restaurant,dining,debit,debit_card,San Antonio,US,USD
-d8f16b23-74b8-4c6d-9cf3-f513f17c802f,2024-02-14T02:59:18Z,-16.99,Disney+,streaming_service,subscriptions,debit,credit_card,San Antonio,US,USD
-c9213197-e85c-42b7-a877-c918ee08c160,2024-02-15T09:27:07Z,-169.80,Target Online,ecommerce,shopping,debit,credit_card,Phoenix,US,USD
-1c58742b-586f-473d-8e6d-d129035201a1,2024-04-20T04:22:15Z,-16.29,Spotify,streaming_service,subscriptions,debit,debit_card,Austin,US,USD
-8c02c918-6362-43ce-9a84-07d0f074d6ea,2024-03-24T18:31:01Z,-140.40,Trader Joe's,supermarket,groceries,debit,debit_card,New York,US,USD
+e3402c8f-d7dd-4e38-b5f9-2601800c4ca2,2024-02-14T02:59:18Z,-168.32,Fine Dining,restaurant,dining,debit,credit_card,San Antonio,US,USD
+c4a9e746-e6e2-46e9-a2db-0221872c1110,2024-02-15T02:50:39Z,-64.18,Spotify,streaming_service,subscriptions,debit,credit_card,Washington,US,USD
+f11b84a9-4fab-4aac-9f1f-4b7ac149bd11,2024-03-08T15:02:15Z,4537.49,Innovate X,employer,income,credit,bank_transfer,Fort Worth,US,USD
+8acc9810-9084-40a4-a42e-ddb1ad9e6c14,2024-04-18T10:39:13Z,-166.50,Whole Foods,supermarket,groceries,debit,debit_card,Austin,US,USD
+ffc66793-18ee-4072-8dd1-8ce06b7ff9a9,2024-04-03T18:04:19Z,-216.71,Whole Foods,supermarket,groceries,debit,credit_card,Austin,US,USD
+6f3bb96a-8e92-4560-bae8-f6fd8468a21b,2024-01-20T03:36:31Z,-25.10,Newspaper Digital,subscription_service,subscriptions,debit,debit_card,Washington,US,USD
+966303b7-0e2c-440c-afb4-222ca0381850,2024-03-05T01:54:33Z,-1104.99,City Properties,landlord,rent,debit,bank_transfer,Houston,US,USD
+63423e06-11c7-40f0-a832-3aa56a0b3ee6,2024-02-09T08:52:19Z,-135.25,Sushi House,restaurant,dining,debit,mobile_wallet,Austin,US,USD
+c835571e-e90b-43ab-8307-99920a0fcf8d,2024-04-19T06:04:36Z,-35.13,Hulu,streaming_service,subscriptions,debit,debit_card,San Antonio,US,USD
+37809f20-46fe-4bfd-a20e-a395a36ae94c,2024-04-20T21:49:50Z,-69.54,Kroger,supermarket,groceries,debit,debit_card,San Diego,US,USD
+9a068220-ae09-4b2a-8656-ff006112f76b,2024-04-23T10:48:47Z,-124.97,Amazon.com,ecommerce,shopping,debit,debit_card,Jacksonville,US,USD
+4103b4ed-9067-4bca-86af-fbf721a98eaa,2024-04-01T04:22:15Z,-169.17,Pizza Palace,restaurant,dining,debit,cash,Austin,US,USD
+e437e0cf-7619-4706-88fd-509aa7d46b60,2024-02-15T09:27:07Z,-109.80,Target Online,ecommerce,shopping,debit,credit_card,Phoenix,US,USD
+0d5a9750-57ba-445a-b21e-06ac264b7f94,2024-02-01T23:54:19Z,-14.97,Disney+,streaming_service,subscriptions,debit,credit_card,Washington,US,USD
+b797ad2e-f998-46e9-897d-682c2ef7d5ac,2024-04-28T07:22:21Z,-179.91,Pizza Palace,restaurant,dining,debit,debit_card,Los Angeles,US,USD
+6d2c4701-39c4-413c-8677-0a75e69c2d9b,2024-03-24T18:31:01Z,-94.12,Trader Joe's,supermarket,groceries,debit,debit_card,New York,US,USD
+58628bda-d469-461e-baca-77e6df344d05,2024-03-08T00:54:57Z,-121.73,Whole Foods,supermarket,groceries,debit,credit_card,Philadelphia,US,USD
+c4f9979e-f13c-43b4-ac0c-2575cc312110,2024-02-18T16:03:04Z,-13.79,Gym Membership,subscription_service,subscriptions,debit,debit_card,Houston,US,USD
+0a5163f5-f6ca-4df8-bf62-792d7e151fc1,2024-03-07T14:48:54Z,-140.23,Cafe Blend,restaurant,dining,debit,debit_card,San Diego,US,USD
+66dd2c3f-53e9-4b65-97af-7ea90de7242f,2024-04-10T12:00:19Z,-123.00,City Water Dept,utility_provider,utilities,debit,credit_card,Charlotte,US,USD
+c8d5620e-a132-4d5d-898c-7d5c40693954,2024-03-12T10:14:46Z,-14.65,Burger Joint,restaurant,dining,debit,mobile_wallet,Austin,US,USD
+97de56d9-c48f-420d-b4a4-3e65a574798e,2024-01-26T21:40:54Z,-110.15,Trader Joe's,supermarket,groceries,debit,debit_card,Charlotte,US,USD
+94c0d32f-6ceb-40a2-b461-a044494a1b59,2024-02-17T03:05:31Z,-175.76,Local Eatery,restaurant,dining,debit,debit_card,New York,US,USD
+19819b4a-3f04-4934-bf0b-4e65118938f4,2024-03-10T02:37:34Z,-107.03,Zappos,ecommerce,shopping,debit,credit_card,San Diego,US,USD
+e9ed6985-191e-46fb-8e58-5dcd597dc705,2024-03-07T05:22:20Z,-135.25,Publix,supermarket,groceries,debit,mobile_wallet,Dallas,US,USD
+d20e734f-859b-4092-8363-7c80a538aee0,2024-01-09T03:47:18Z,-147.28,Whole Foods,supermarket,groceries,debit,debit_card,Philadelphia,US,USD
+0f56a7c5-49d6-4ab3-aea5-ac96f31857af,2024-03-11T09:44:48Z,-60.89,Aldi,supermarket,groceries,debit,credit_card,San Antonio,US,USD
+29063875-2165-472a-9ebc-aaa1a6568c06,2024-03-24T10:48:47Z,-16.99,Disney+,streaming_service,subscriptions,debit,credit_card,Washington,US,USD
+2dd1951e-f7fa-46b1-ac79-59947baf4810,2024-04-12T00:09:50Z,-147.45,Zappos,ecommerce,shopping,debit,credit_card,Philadelphia,US,USD
+8ed231aa-461c-4313-bd0f-f363f5792141,2024-03-02T13:46:25Z,-38.41,Gym Membership,subscription_service,subscriptions,debit,credit_card,San Diego,US,USD
+871b1684-f11b-4d52-ba46-384bac14a473,2024-02-23T06:58:39Z,-135.53,CVS Pharmacy,pharmacy,healthcare,debit,debit_card,Jacksonville,US,USD
+2dc70f37-d98e-422b-8a26-ee4596345131,2024-02-25T01:57:37Z,-11.45,Hulu,streaming_service,subscriptions,debit,debit_card,Dallas,US,USD
+304ce9d9-d7b3-444b-bef6-6825abf4442a,2024-01-26T20:20:47Z,-141.59,Kroger,supermarket,groceries,debit,debit_card,Austin,US,USD
+0ce2aa7b-5b58-4081-949d-14d3ff231f1d,2024-02-14T01:13:06Z,-147.88,Cafe Blend,restaurant,dining,debit,credit_card,Houston,US,USD
+e1007aca-e2a7-466f-aa6a-48d1021719b0,2024-01-13T10:04:13Z,-143.04,Trader Joe's,supermarket,groceries,debit,debit_card,San Jose,US,USD
+e71c9037-5567-4176-b092-f29cf15ff2d7,2024-03-02T13:14:40Z,-134.02,Burger Joint,restaurant,dining,debit,mobile_wallet,Austin,US,USD
+b78dc45d-15d5-4beb-a573-abad3a10416a,2024-01-20T09:47:04Z,-129.43,Safeway,supermarket,groceries,debit,credit_card,Dallas,US,USD
+8516ee4d-02d3-434f-986f-de222a9790aa,2024-02-17T03:52:13Z,-33.58,Gym Membership,subscription_service,subscriptions,debit,debit_card,Houston,US,USD
+7bf2c35c-d356-410c-bdcf-d492b7a44ac7,2024-01-10T12:04:53Z,-140.24,Starbucks,restaurant,dining,debit,mobile_wallet,New York,US,USD
+ab4fe9fd-c9ae-4171-9e80-575c3eb34196,2024-04-02T02:00:36Z,-39.95,Hulu,streaming_service,subscriptions,debit,credit_card,Washington,US,USD
+a752520a-7534-4891-a404-aac3b50b800c,2024-04-22T04:26:40Z,-143.20,Local Eatery,restaurant,dining,debit,mobile_wallet,Phoenix,US,USD
+7074c57a-187b-42c5-b2c8-d1ee1fa456c6,2024-01-09T03:47:18Z,-110.19,Trader Joe's,supermarket,groceries,debit,debit_card,Philadelphia,US,USD
+87f72d91-c31a-4649-a8a3-9d6f0ee4ae0a,2024-02-09T08:52:19Z,-21.87,Hulu,streaming_service,subscriptions,debit,debit_card,Washington,US,USD
+d348a2f5-e3c0-45e0-8709-3f4fbfdfb096,2024-01-23T15:24:29Z,-133.56,Pizza Palace,restaurant,dining,debit,debit_card,San Antonio,US,USD
+f689af6e-c45a-4f1f-83b0-193fabf8514b,2024-02-14T02:59:18Z,-16.99,Disney+,streaming_service,subscriptions,debit,credit_card,San Antonio,US,USD
+58c2bef8-a81f-49ea-920f-2445ae2a31fb,2024-02-15T09:27:07Z,-169.80,Target Online,ecommerce,shopping,debit,credit_card,Phoenix,US,USD
+cbde071f-b58e-45ce-b046-9988be5f18b2,2024-04-20T04:22:15Z,-16.29,Spotify,streaming_service,subscriptions,debit,debit_card,Austin,US,USD
+243b441c-b03f-457d-bb16-7d230637bcb7,2024-03-24T18:31:01Z,-140.40,Trader Joe's,supermarket,groceries,debit,debit_card,New York,US,USD
+d068d236-a1ad-4b64-ba26-2cd076f54e04,2024-04-03T02:00:36Z,-142.18,Whole Foods,supermarket,groceries,debit,debit_card,Washington,US,USD
+4c13d978-5542-4e58-b23f-bcd1dd512e06,2024-01-26T21:40:54Z,-110.15,Trader Joe's,supermarket,groceries,debit,debit_card,Charlotte,US,USD
+67588000-fbb3-4ed8-b3c4-2770c0bdae5c,2024-02-17T03:05:31Z,-175.76,Local Eatery,restaurant,dining,debit,debit_card,New York,US,USD
+51747c29-f1cc-4f11-8f59-e5d88419a37d,2024-03-10T02:37:34Z,-107.03,Zappos,ecommerce,shopping,debit,credit_card,San Diego,US,USD
+d0473100-4dc4-4fad-bc36-32d0d87f6595,2024-03-07T05:22:20Z,-135.25,Publix,supermarket,groceries,debit,mobile_wallet,Dallas,US,USD
+92422066-6092-4517-b9f8-4067514ffebb,2024-01-09T03:47:18Z,-147.28,Whole Foods,supermarket,groceries,debit,debit_card,Philadelphia,US,USD
+4db25fd2-fcad-410c-ab6f-afe5a8bdbf2f,2024-04-03T18:04:19Z,-216.71,Whole Foods,supermarket,groceries,debit,credit_card,Austin,US,USD
+e2c852fe-7825-4c68-a7fd-44fe8d802507,2024-01-20T03:36:31Z,-25.10,Newspaper Digital,subscription_service,subscriptions,debit,debit_card,Washington,US,USD
+dfb58b83-a3dd-4c47-ad21-e1ec640f5621,2024-03-05T01:54:33Z,-1104.99,City Properties,landlord,rent,debit,bank_transfer,Houston,US,USD
+30df2627-ea48-4efb-9da8-853de3db460c,2024-02-09T08:52:19Z,-135.25,Sushi House,restaurant,dining,debit,mobile_wallet,Austin,US,USD
+53478612-d148-4c3d-aa16-541f9b2fb952,2024-04-19T06:04:36Z,-35.13,Hulu,streaming_service,subscriptions,debit,debit_card,San Antonio,US,USD
+85adf5f2-eca4-41de-b2f8-4046c5c204a5,2024-04-20T21:49:50Z,-69.54,Kroger,supermarket,groceries,debit,debit_card,San Diego,US,USD
+58945226-9d26-4b97-a754-936cae525eb3,2024-04-23T10:48:47Z,-124.97,Amazon.com,ecommerce,shopping,debit,debit_card,Jacksonville,US,USD
+7261fb5e-2b6f-4afe-9150-222f2af8c62f,2024-04-01T04:22:15Z,-169.17,Pizza Palace,restaurant,dining,debit,cash,Austin,US,USD
+ff7fceec-9ee4-45e7-a935-c1d28ddbaf2d,2024-02-15T09:27:07Z,-109.80,Target Online,ecommerce,shopping,debit,credit_card,Phoenix,US,USD
+8c90137d-35d0-4c22-bf33-9d39eb79bcc0,2024-02-01T23:54:19Z,-14.97,Disney+,streaming_service,subscriptions,debit,credit_card,Washington,US,USD
+591a2538-a530-4760-b256-9fc898ec4454,2024-04-28T07:22:21Z,-179.91,Pizza Palace,restaurant,dining,debit,debit_card,Los Angeles,US,USD
+88e6a3a7-898c-45b6-96a2-48da152a7419,2024-03-24T18:31:01Z,-94.12,Trader Joe's,supermarket,groceries,debit,debit_card,New York,US,USD
+4a243df3-0c0c-459a-9a64-52b1aa4095ef,2024-03-08T00:54:57Z,-121.73,Whole Foods,supermarket,groceries,debit,credit_card,Philadelphia,US,USD
+30f21117-0427-46fa-a802-8a10bdfe7947,2024-02-18T16:03:04Z,-13.79,Gym Membership,subscription_service,subscriptions,debit,debit_card,Houston,US,USD
+662ae8da-26c0-4b54-9227-2c1701d46850,2024-03-07T14:48:54Z,-140.23,Cafe Blend,restaurant,dining,debit,debit_card,San Diego,US,USD
+40753784-887e-43ac-b76f-b82299011f73,2024-04-10T12:00:19Z,-123.00,City Water Dept,utility_provider,utilities,debit,credit_card,Charlotte,US,USD
+4945158c-1a2d-49e6-81ff-eed8ddd53829,2024-03-12T10:14:46Z,-14.65,Burger Joint,restaurant,dining,debit,mobile_wallet,Austin,US,USD
+322f1b83-e00d-4996-8d6e-d683f3453ef8,2024-01-26T21:40:54Z,-110.15,Trader Joe's,supermarket,groceries,debit,debit_card,Charlotte,US,USD
+cbf90718-9efe-4e1a-811e-775a207b7e7b,2024-02-17T03:05:31Z,-175.76,Local Eatery,restaurant,dining,debit,debit_card,New York,US,USD
+378e6b69-be3e-4553-8756-b773a6cd68da,2024-03-10T02:37:34Z,-107.03,Zappos,ecommerce,shopping,debit,credit_card,San Diego,US,USD
+b452eaa2-c592-4514-8e90-d38d803ee2da,2024-03-07T05:22:20Z,-135.25,Publix,supermarket,groceries,debit,mobile_wallet,Dallas,US,USD
+f2933290-352a-4de3-acf5-af9f40ad7684,2024-01-09T03:47:18Z,-147.28,Whole Foods,supermarket,groceries,debit,debit_card,Philadelphia,US,USD
+c097a45b-e870-49f7-af91-a4afd480c0d3,2024-03-11T09:44:48Z,-60.89,Aldi,supermarket,groceries,debit,credit_card,San Antonio,US,USD
+15d8859a-36a1-49fa-b649-e60ce86ee19a,2024-03-24T10:48:47Z,-16.99,Disney+,streaming_service,subscriptions,debit,credit_card,Washington,US,USD
+0e4a71f3-2db0-47a2-8fdc-48712a4d91e6,2024-04-12T00:09:50Z,-147.45,Zappos,ecommerce,shopping,debit,credit_card,Philadelphia,US,USD
+8f061467-50e4-4068-968d-10ee06123182,2024-03-02T13:46:25Z,-38.41,Gym Membership,subscription_service,subscriptions,debit,credit_card,San Diego,US,USD
+832d2955-fc21-414d-bf38-5e66986dfebc,2024-02-23T06:58:39Z,-135.53,CVS Pharmacy,pharmacy,healthcare,debit,debit_card,Jacksonville,US,USD
+cdb83b9e-5ea0-4f1c-bc78-88b392ef61c6,2024-02-25T01:57:37Z,-11.45,Hulu,streaming_service,subscriptions,debit,debit_card,Dallas,US,USD
+168b063f-7586-4fd7-a926-a82cc46318a0,2024-01-26T20:20:47Z,-141.59,Kroger,supermarket,groceries,debit,debit_card,Austin,US,USD
+57d93ef7-1b75-402a-8696-f20955cc78ab,2024-02-14T01:13:06Z,-147.88,Cafe Blend,restaurant,dining,debit,credit_card,Houston,US,USD
+a1673337-7f90-4bf5-997e-8a3694dc66b2,2024-01-13T10:04:13Z,-143.04,Trader Joe's,supermarket,groceries,debit,debit_card,San Jose,US,USD
+9f3c62ae-3586-4a94-b75f-15b25ad9829b,2024-03-02T13:14:40Z,-134.02,Burger Joint,restaurant,dining,debit,mobile_wallet,Austin,US,USD
+32926ade-efa7-4a69-b529-f9c92922b8b6,2024-01-20T09:47:04Z,-129.43,Safeway,supermarket,groceries,debit,credit_card,Dallas,US,USD
+10c684a0-bc74-40aa-bd40-d07c311d9682,2024-02-17T03:52:13Z,-33.58,Gym Membership,subscription_service,subscriptions,debit,debit_card,Houston,US,USD
+5e61a060-243d-4717-b1d1-004dab914498,2024-01-10T12:04:53Z,-140.24,Starbucks,restaurant,dining,debit,mobile_wallet,New York,US,USD
+0183808b-c528-43c3-95c9-5776ae82628b,2024-04-02T02:00:36Z,-39.95,Hulu,streaming_service,subscriptions,debit,credit_card,Washington,US,USD
+aea2c1cd-21cb-452e-92b1-659d29f4c396,2024-04-22T04:26:40Z,-143.20,Local Eatery,restaurant,dining,debit,mobile_wallet,Phoenix,US,USD
+226387a3-7b12-43ca-8100-cce7fde0ce90,2024-01-09T03:47:18Z,-110.19,Trader Joe's,supermarket,groceries,debit,debit_card,Philadelphia,US,USD
+5ff86ea8-f6e4-42fe-8c71-c14de54d1175,2024-02-09T08:52:19Z,-21.87,Hulu,streaming_service,subscriptions,debit,debit_card,Washington,US,USD
+85f06a41-6a86-4562-a941-af986238939d,2024-01-23T15:24:29Z,-133.56,Pizza Palace,restaurant,dining,debit,debit_card,San Antonio,US,USD
+87497983-ea75-47d4-8c2d-cd9ed1f76355,2024-02-14T02:59:18Z,-16.99,Disney+,streaming_service,subscriptions,debit,credit_card,San Antonio,US,USD
+1143d36e-fc2d-4d57-a2c5-e23f0aac6947,2024-02-15T09:27:07Z,-169.80,Target Online,ecommerce,shopping,debit,credit_card,Phoenix,US,USD
+356ec317-337e-45bf-8450-6ce7950eec0e,2024-04-20T04:22:15Z,-16.29,Spotify,streaming_service,subscriptions,debit,debit_card,Austin,US,USD
+e8ec0078-a141-40ac-8b6e-3e7c0afa9a6e,2024-03-24T18:31:01Z,-140.40,Trader Joe's,supermarket,groceries,debit,debit_card,New York,US,USD
+6ad7226d-7a75-47e9-b0dd-0ac82b917478,2024-04-03T02:00:36Z,-142.18,Whole Foods,supermarket,groceries,debit,debit_card,Washington,US,USD
+5b08ba90-8e48-4fbd-86d6-d7054dd46723,2024-01-26T21:40:54Z,-110.15,Trader Joe's,supermarket,groceries,debit,debit_card,Charlotte,US,USD
+4b4c6fc5-ed04-43f1-89c3-17929b21a2c9,2024-02-17T03:05:31Z,-175.76,Local Eatery,restaurant,dining,debit,debit_card,New York,US,USD
+340aae8b-04fc-44a0-86a1-65b387fbd211,2024-03-10T02:37:34Z,-107.03,Zappos,ecommerce,shopping,debit,credit_card,San Diego,US,USD
+f3763d6d-bbae-4d25-9c44-9d97301edfc5,2024-03-07T05:22:20Z,-135.25,Publix,supermarket,groceries,debit,mobile_wallet,Dallas,US,USD
+3bc8984b-6c3c-45bb-8ea4-145624d44055,2024-01-09T03:47:18Z,-147.28,Whole Foods,supermarket,groceries,debit,debit_card,Philadelphia,US,USD
+21d81b8b-a60c-403d-9e0f-fa000ccc8470,2024-03-11T09:44:48Z,-60.89,Aldi,supermarket,groceries,debit,credit_card,San Antonio,US,USD
+2f0c6b93-5330-4ab2-a420-f2b3fa9cecd5,2024-03-24T10:48:47Z,-16.99,Disney+,streaming_service,subscriptions,debit,credit_card,Washington,US,USD
+e907a7f9-7a73-41d3-9193-198927e12426,2024-04-12T00:09:50Z,-147.45,Zappos,ecommerce,shopping,debit,credit_card,Philadelphia,US,USD
+07aeaae0-653e-429d-a3c8-1593fddc0559,2024-03-02T13:46:25Z,-38.41,Gym Membership,subscription_service,subscriptions,debit,credit_card,San Diego,US,USD
+8b1e80af-6e7a-49d9-81b6-e891c78a1cc7,2024-02-23T06:58:39Z,-135.53,CVS Pharmacy,pharmacy,healthcare,debit,debit_card,Jacksonville,US,USD
+adc1ec76-5313-4935-9571-cf57e837748f,2024-02-25T01:57:37Z,-11.45,Hulu,streaming_service,subscriptions,debit,debit_card,Dallas,US,USD
+fa54819a-debe-4b01-b206-435b011864da,2024-01-26T20:20:47Z,-141.59,Kroger,supermarket,groceries,debit,debit_card,Austin,US,USD
+c4f59f1a-063f-46ab-b425-503e62a9077a,2024-02-14T01:13:06Z,-147.88,Cafe Blend,restaurant,dining,debit,credit_card,Houston,US,USD
+48e6702a-331a-4deb-9134-74f89cd7fa24,2024-01-13T10:04:13Z,-143.04,Trader Joe's,supermarket,groceries,debit,debit_card,San Jose,US,USD
+e45e469a-cb2d-48fb-989e-1e1e85965547,2024-03-02T13:14:40Z,-134.02,Burger Joint,restaurant,dining,debit,mobile_wallet,Austin,US,USD
+9f47d3d5-7687-482b-8b91-2c53d76e1d6c,2024-01-20T09:47:04Z,-129.43,Safeway,supermarket,groceries,debit,credit_card,Dallas,US,USD
+a028b02e-4840-4f25-a62a-bdf1d889ac57,2024-02-17T03:52:13Z,-33.58,Gym Membership,subscription_service,subscriptions,debit,debit_card,Houston,US,USD
+1ec0de3b-9496-4b12-a869-8f88175bbd45,2024-01-10T12:04:53Z,-140.24,Starbucks,restaurant,dining,debit,mobile_wallet,New York,US,USD
+d901b4e3-3391-4a29-9832-dbeafca854eb,2024-04-02T02:00:36Z,-39.95,Hulu,streaming_service,subscriptions,debit,credit_card,Washington,US,USD
+29339159-9afa-4398-893b-cd3acd2e44b9,2024-04-22T04:26:40Z,-143.20,Local Eatery,restaurant,dining,debit,mobile_wallet,Phoenix,US,USD
+ec59d201-c0b2-4a0c-ac05-82a06145fb84,2024-01-09T03:47:18Z,-110.19,Trader Joe's,supermarket,groceries,debit,debit_card,Philadelphia,US,USD
+d47ebe4e-e843-48b5-acc6-c81f2651187b,2024-02-09T08:52:19Z,-21.87,Hulu,streaming_service,subscriptions,debit,debit_card,Washington,US,USD
+455d40fe-bed5-4c98-b929-007bef5911b2,2024-01-23T15:24:29Z,-133.56,Pizza Palace,restaurant,dining,debit,debit_card,San Antonio,US,USD
+ef175235-9766-4e29-8446-003754e3fe6c,2024-02-14T02:59:18Z,-16.99,Disney+,streaming_service,subscriptions,debit,credit_card,San Antonio,US,USD
+0c0e460f-b7a7-4d1e-a002-796dbf315bd3,2024-02-15T09:27:07Z,-169.80,Target Online,ecommerce,shopping,debit,credit_card,Phoenix,US,USD
+05e70254-9a09-413a-86e5-8710c19e283b,2024-04-20T04:22:15Z,-16.29,Spotify,streaming_service,subscriptions,debit,debit_card,Austin,US,USD
+50d57c66-6dd8-49c6-b717-9d95af5bd52b,2024-03-24T18:31:01Z,-140.40,Trader Joe's,supermarket,groceries,debit,debit_card,New York,US,USD
