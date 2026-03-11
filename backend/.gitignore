@@ -5,9 +5,6 @@ __pycache__/
 # virtual env
 .venv/
 
-# generated synthetic data
-synthetic-data/output_data/
-
 # binaries
 synthetic-data/alloydb-auth-proxy*
 
