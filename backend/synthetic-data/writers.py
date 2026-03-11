@@ -2,6 +2,7 @@
 
 import csv
 import json
+import uuid
 from io import StringIO
 from pathlib import Path
 
@@ -56,13 +57,45 @@ def write_raw_debug(raw_text: str, out_dir: Path | None = None) -> Path:
     return path
 
 
+def deduplicate_ids(transactions: list[dict]) -> int:
+    """Replace duplicate transaction_id values with fresh UUIDs.
+    Returns the number of IDs that were replaced."""
+    seen: set[str] = set()
+    replaced = 0
+    for row in transactions:
+        tid = row.get("transaction_id", "")
+        if tid in seen:
+            row["transaction_id"] = str(uuid.uuid4())
+            replaced += 1
+        else:
+            seen.add(tid)
+    return replaced
+
+
+def transactions_to_csv(transactions: list[dict]) -> str:
+    """Serialize a list of transaction dicts back to CSV text."""
+    if not transactions:
+        return ""
+    out = StringIO()
+    writer = csv.DictWriter(out, fieldnames=transactions[0].keys())
+    writer.writeheader()
+    writer.writerows(transactions)
+    return out.getvalue()
+
+
 def save_all(raw_csv: str) -> tuple[Path, Path]:
     """
     Save CSV and JSON to output_data. Creates dir if needed.
+    Deduplicates transaction IDs before writing.
     Returns (csv_path, json_path).
     """
     ensure_output_dir()
-    csv_path = write_csv(raw_csv)
     transactions = csv_to_transactions(raw_csv)
+
+    replaced = deduplicate_ids(transactions)
+    if replaced:
+        print(f"  Fixed {replaced} duplicate transaction_id(s) with new UUIDs.")
+
+    csv_path = write_csv(transactions_to_csv(transactions))
     json_path = write_json(transactions)
     return csv_path, json_path
