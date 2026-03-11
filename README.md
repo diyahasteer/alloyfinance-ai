@@ -19,3 +19,7 @@ npm run dev
 ```
 
 Open the app at `http://localhost:5173` and it will call the backend at `http://localhost:8000/api/hello`.
+
+## GKE + AlloyDB Omni (deploy)
+
+One-time project setup and per-member setup for GKE cluster `alloydb-demo` and AlloyDB Omni are in **[deploy/GKE-ALLOYDB-SETUP.md](deploy/GKE-ALLOYDB-SETUP.md)**. Optional scripts: `deploy/setup-project.sh`, `deploy/setup-member.sh`.

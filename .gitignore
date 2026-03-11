@@ -1,0 +1,43 @@
+# Virtual environments (anywhere in repo)
+.venv/
+venv/
+env/
+ENV/
+**/.venv/
+**/venv/
+**/env/
+backend/.venv/
+/backend/.venv/
+
+# Deploy (ignore generated artifacts only)
+deploy/*.tgz
+deploy/*.tar.gz
+*.tgz
+*.tar.gz
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Node
+node_modules/
+frontend/node_modules/
+
+# Env and secrets
+.env
+.env.local
+*.pem
+
+# IDE and OS
+.idea/
+.vscode/
+.DS_Store
+*.swp
+*.swo

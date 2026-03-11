@@ -1,0 +1,31 @@
+# Example AlloyDB Omni DBCluster + Secret
+# Apply with: kubectl apply -f deploy/dbcluster.yaml -n <name>-dev
+# The -n flag overrides the namespace in this file.
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-pw-my-cluster
+  namespace: alloydb-dev   # overridden by -n <name>-dev
+type: Opaque
+data:
+  # base64-encoded password (example: "alloydb123" -> YWxsb3lkYjEyMw==)
+  my-cluster: "YWxsb3lkYjEyMw=="
+---
+apiVersion: alloydbomni.dbadmin.goog/v1
+kind: DBCluster
+metadata:
+  name: my-cluster
+  namespace: alloydb-dev   # overridden by -n <name>-dev
+spec:
+  databaseVersion: "16.8.0"
+  primarySpec:
+    adminUser:
+      passwordRef:
+        name: db-pw-my-cluster
+    resources:
+      cpu: 1
+      memory: 2Gi
+      disks:
+      - name: DataDisk
+        size: 10Gi
