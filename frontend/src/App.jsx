@@ -1,41 +1,127 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useTransactions } from "./hooks/useTransactions";
+import TransactionForm from "./components/TransactionForm";
+import TransactionTable from "./components/TransactionTable";
+
+const CATEGORIES = [
+  "groceries",
+  "dining",
+  "shopping",
+  "subscriptions",
+  "utilities",
+  "rent",
+  "healthcare",
+  "transportation",
+  "entertainment",
+  "income",
+];
 
 export default function App() {
-  const [message, setMessage] = useState("Loading...");
-  const [error, setError] = useState("");
+  const {
+    transactions,
+    loading,
+    error,
+    activeFilter,
+    fetchRecent,
+    fetchByCategory,
+    fetchCurrentMonth,
+    fetchPreviousMonth,
+    createTransaction,
+  } = useTransactions();
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const res = await fetch("http://localhost:8000/api/hello?name=React");
-        if (!res.ok) {
-          throw new Error(`Request failed with status ${res.status}`);
-        }
-        const data = await res.json();
-        setMessage(data.message);
-      } catch (err) {
-        setError(err.message || "Failed to load");
-      }
-    }
+  const [showForm, setShowForm] = useState(false);
+  const [categoryFilter, setCategoryFilter] = useState("");
 
-    load();
-  }, []);
+  const handleCategoryChange = (e) => {
+    const val = e.target.value;
+    setCategoryFilter(val);
+    if (val) fetchByCategory(val);
+    else fetchRecent();
+  };
+
+  const handleCreate = async (txn) => {
+    await createTransaction(txn);
+    setShowForm(false);
+  };
+
+  const filterLabel = () => {
+    if (activeFilter === "recent") return "Recent transactions";
+    if (activeFilter === "current-month") return "Current month";
+    if (activeFilter === "previous-month") return "Previous month";
+    if (activeFilter.startsWith("category:"))
+      return `Category: ${activeFilter.split(":")[1]}`;
+    return "Transactions";
+  };
 
   return (
-    <main className="page">
-      <section className="card">
+    <div className="app">
+      <header className="header">
         <h1>AlloyFinance</h1>
-        <p className="subtitle">React ↔ FastAPI wired up</p>
-        {error ? (
-          <p className="error">{error}</p>
-        ) : (
-          <p className="message">{message}</p>
+        <p className="header-sub">Transaction Tracker</p>
+      </header>
+
+      <main className="main">
+        {/* Controls bar */}
+        <section className="controls">
+          <div className="filter-group">
+            <button
+              className={`btn btn-filter ${activeFilter === "recent" ? "active" : ""}`}
+              onClick={() => { setCategoryFilter(""); fetchRecent(); }}
+            >
+              Recent
+            </button>
+            <button
+              className={`btn btn-filter ${activeFilter === "current-month" ? "active" : ""}`}
+              onClick={() => { setCategoryFilter(""); fetchCurrentMonth(); }}
+            >
+              This Month
+            </button>
+            <button
+              className={`btn btn-filter ${activeFilter === "previous-month" ? "active" : ""}`}
+              onClick={() => { setCategoryFilter(""); fetchPreviousMonth(); }}
+            >
+              Last Month
+            </button>
+
+            <select
+              className="category-select"
+              value={categoryFilter}
+              onChange={handleCategoryChange}
+            >
+              <option value="">All Categories</option>
+              {CATEGORIES.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </div>
+
+          <button
+            className="btn btn-primary"
+            onClick={() => setShowForm((s) => !s)}
+          >
+            {showForm ? "Cancel" : "+ New Transaction"}
+          </button>
+        </section>
+
+        {/* Form (collapsible) */}
+        {showForm && (
+          <section className="card">
+            <TransactionForm onSubmit={handleCreate} />
+          </section>
         )}
-        <div className="meta">
-          <span>Backend: http://localhost:8000</span>
-          <span>Endpoint: /api/hello</span>
-        </div>
-      </section>
-    </main>
+
+        {/* Error */}
+        {error && <p className="global-error">{error}</p>}
+
+        {/* Table */}
+        <section className="card">
+          <div className="table-header">
+            <h2>{filterLabel()}</h2>
+            <span className="txn-count">{transactions.length} transactions</span>
+          </div>
+          <TransactionTable transactions={transactions} loading={loading} />
+        </section>
+      </main>
+    </div>
   );
 }
