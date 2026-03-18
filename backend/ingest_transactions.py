@@ -26,7 +26,6 @@ def main() -> None:
     try:
         with conn:
             with conn.cursor() as cur:
-                # Ensure table exists
                 cur.execute(
                     """
                     CREATE TABLE IF NOT EXISTS transactions (
@@ -40,9 +39,13 @@ def main() -> None:
                         payment_method TEXT NOT NULL,
                         city TEXT NOT NULL,
                         country TEXT NOT NULL,
-                        currency TEXT NOT NULL
+                        currency TEXT NOT NULL,
+                        description TEXT
                     )
                     """
+                )
+                cur.execute(
+                    "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS description TEXT"
                 )
 
                 # Read CSV rows
@@ -80,6 +83,7 @@ def main() -> None:
                             r["city"],
                             r["country"],
                             r["currency"],
+                            r.get("description"),
                         )
                     )
 
@@ -100,7 +104,8 @@ def main() -> None:
                         payment_method,
                         city,
                         country,
-                        currency
+                        currency,
+                        description
                     )
                     VALUES %s
                     ON CONFLICT (transaction_id) DO NOTHING

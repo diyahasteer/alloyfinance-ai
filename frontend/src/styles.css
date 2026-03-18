@@ -1,66 +1,304 @@
 @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap");
 
+/* ---- Reset & base ---- */
+
 :root {
   color-scheme: light;
   font-family: "Space Grotesk", "Segoe UI", sans-serif;
   background: radial-gradient(circle at top, #f0f7ff, #f6f2ff 45%, #fff 100%);
   color: #0b1021;
+  --radius: 16px;
+  --shadow: 0 8px 32px rgba(15, 23, 42, 0.08);
 }
 
-* {
-  box-sizing: border-box;
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body { min-height: 100vh; }
+
+/* ---- Layout ---- */
+
+.app {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 4rem;
 }
 
-body {
-  margin: 0;
-  min-height: 100vh;
+.header {
+  margin-bottom: 2rem;
 }
 
-.page {
-  min-height: 100vh;
+.header h1 {
+  font-size: 2rem;
+  letter-spacing: -0.03em;
+}
+
+.header-sub {
+  color: #64748b;
+  font-size: 0.95rem;
+  margin-top: 0.25rem;
+}
+
+.main {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2.5rem;
+  flex-direction: column;
+  gap: 1.25rem;
 }
+
+/* ---- Card ---- */
 
 .card {
-  width: min(560px, 100%);
   background: #ffffffcc;
   backdrop-filter: blur(14px);
   border: 1px solid #e5e7f0;
-  border-radius: 24px;
-  padding: 2.5rem;
-  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.15);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  box-shadow: var(--shadow);
 }
 
-h1 {
-  margin: 0 0 0.5rem;
-  font-size: 2.4rem;
-  letter-spacing: -0.02em;
+/* ---- Controls bar ---- */
+
+.controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
 }
 
-.subtitle {
-  margin: 0 0 1.5rem;
-  color: #4b5563;
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
-.message {
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: #0f172a;
+/* ---- Buttons ---- */
+
+.btn {
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border: none;
+  border-radius: 10px;
+  padding: 0.55rem 1rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
 }
 
-.error {
-  color: #b91c1c;
-  font-weight: 600;
+.btn-filter {
+  background: #f1f5f9;
+  color: #475569;
 }
 
-.meta {
-  margin-top: 1.5rem;
+.btn-filter:hover {
+  background: #e2e8f0;
+}
+
+.btn-filter.active {
+  background: #0f172a;
+  color: #fff;
+}
+
+.btn-primary {
+  background: #2563eb;
+  color: #fff;
+}
+
+.btn-primary:hover {
+  background: #1d4ed8;
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.category-select {
+  font-family: inherit;
+  font-size: 0.875rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  color: #334155;
+  cursor: pointer;
+}
+
+/* ---- Form ---- */
+
+.txn-form h2 {
+  font-size: 1.15rem;
+  margin-bottom: 1rem;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.field {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
-  font-size: 0.9rem;
+  gap: 0.3rem;
+}
+
+.field span {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #475569;
+}
+
+.field input,
+.field select {
+  font-family: inherit;
+  font-size: 0.875rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  color: #0f172a;
+  transition: border-color 0.15s;
+}
+
+.field input:focus,
+.field select:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.field-wide {
+  grid-column: 1 / -1;
+}
+
+.form-error {
+  color: #b91c1c;
+  font-size: 0.875rem;
+  font-weight: 500;
+  margin-bottom: 0.75rem;
+}
+
+/* ---- Table ---- */
+
+.table-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.table-header h2 {
+  font-size: 1.15rem;
+}
+
+.txn-count {
+  font-size: 0.85rem;
   color: #64748b;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.txn-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+.txn-table th {
+  text-align: left;
+  font-weight: 600;
+  color: #475569;
+  padding: 0.6rem 0.75rem;
+  border-bottom: 2px solid #e5e7f0;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.txn-table td {
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid #f1f5f9;
+  color: #1e293b;
+}
+
+.txn-table tbody tr:hover {
+  background: #f8fafc;
+}
+
+.cell-merchant {
+  font-weight: 500;
+}
+
+.cell-amount {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.cell-payment {
+  text-transform: capitalize;
+}
+
+.cell-desc {
+  color: #64748b;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.amount-neg { color: #dc2626; }
+.amount-pos { color: #16a34a; }
+
+/* ---- Badges ---- */
+
+.badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.2rem 0.55rem;
+  border-radius: 6px;
+  text-transform: capitalize;
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.badge-groceries   { background: #dcfce7; color: #166534; }
+.badge-dining      { background: #fef3c7; color: #92400e; }
+.badge-shopping    { background: #ede9fe; color: #5b21b6; }
+.badge-subscriptions { background: #dbeafe; color: #1e40af; }
+.badge-utilities   { background: #e0e7ff; color: #3730a3; }
+.badge-rent        { background: #fce7f3; color: #9d174d; }
+.badge-healthcare  { background: #ccfbf1; color: #115e59; }
+.badge-income      { background: #d1fae5; color: #065f46; }
+.badge-entertainment { background: #fef9c3; color: #854d0e; }
+.badge-transportation { background: #e0f2fe; color: #075985; }
+
+.table-status {
+  text-align: center;
+  padding: 2rem;
+  color: #64748b;
+}
+
+.global-error {
+  text-align: center;
+  color: #b91c1c;
+  font-weight: 600;
+  padding: 0.75rem;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+}
+
+/* ---- Responsive ---- */
+
+@media (max-width: 640px) {
+  .app { padding: 1rem; }
+  .controls { flex-direction: column; align-items: stretch; }
+  .filter-group { justify-content: center; }
+  .form-grid { grid-template-columns: 1fr; }
 }
