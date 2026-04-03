@@ -9,8 +9,8 @@ from dotenv import load_dotenv
 
 def main() -> None:
     # Load environment variables from .env at repo root
-    project_root = Path(__file__).resolve().parents[1]
-    env_path = project_root / ".env"
+    script_dir = Path(__file__).resolve().parent
+    env_path = script_dir.parent / ".env"
     if env_path.exists():
         load_dotenv(env_path)
 
@@ -18,7 +18,7 @@ def main() -> None:
     if not database_url:
         raise ValueError("DATABASE_URL is not set; ensure it is in .env or the environment")
 
-    csv_path = project_root / "backend" / "synthetic-data" / "output_data" / "transactions.csv"
+    csv_path = script_dir / "synthetic-data" / "output_data" / "transactions.csv"
     if not csv_path.exists():
         raise FileNotFoundError(f"CSV file not found at {csv_path}")
 

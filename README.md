@@ -2,24 +2,19 @@
 
 Bootstrapped React frontend + FastAPI backend with a basic API handshake.
 
-## Running with Docker (recommended)
+## Setup
 
-The easiest way to run everything. Only requires [Docker Desktop](https://www.docker.com/products/docker-desktop/).
+Requires the `.env` file (get this from the team).
 
+**Step 1 — Start the AlloyDB port-forward** (keep this running in a separate terminal):
 ```bash
-docker compose up --build
+gcloud alloydb instances port-forward INSTANCE_NAME \
+  --port=5433 \
+  --project=PROJECT_ID \
+  --region=REGION
 ```
 
-- Frontend: http://localhost:5173
-- Backend: http://localhost:8000
-- Postgres: localhost:5433
-
-To stop everything: `docker compose down`
-To stop and wipe the database: `docker compose down -v`
-
----
-
-## Running locally (manual setup)
+**Step 2 — Start the app:**
 
 ### Backend (FastAPI)
 ```bash
