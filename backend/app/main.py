@@ -162,7 +162,7 @@ async def google_login(body: GoogleLoginRequest):
         logger.exception("Google token verification failed")
         raise HTTPException(
             status_code=502,
-            detail="Google token verification failed. Check backend network access and GOOGLE_CLIENT_ID.",
+            detail="Google token verification failed. Please try again.",
         ) from exc
 
     google_id = idinfo["sub"]
