@@ -2,6 +2,7 @@ import os
 import uuid
 import logging
 from datetime import datetime, timezone, timedelta
+from enum import Enum
 from typing import Optional
 
 import jwt
@@ -9,6 +10,7 @@ from dotenv import load_dotenv
 import asyncpg
 from fastapi import FastAPI, HTTPException, Query, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 from pydantic import BaseModel, Field
@@ -56,7 +58,7 @@ pool: asyncpg.Pool = None
 @app.on_event("startup")
 async def startup():
     global pool
-    pool = await asyncpg.create_pool(DATABASE_URL)
+    pool = await asyncpg.create_pool(DATABASE_URL, ssl=False)
     async with pool.acquire() as conn:
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS items (
@@ -104,6 +106,13 @@ async def startup():
             SET user_id = (SELECT id FROM users WHERE email = 'nikhil.m@berkeley.edu' LIMIT 1)
             WHERE user_id IS NULL
         """)
+        # Budget preferences: one row per category, amount is the user's spending limit
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS "BudgetPrefs" (
+                category TEXT PRIMARY KEY,
+                amount   NUMERIC(18, 2) NOT NULL
+            )
+        """)
 
 @app.on_event("shutdown")
 async def shutdown():
@@ -125,7 +134,10 @@ def create_jwt(user_id: str, email: str) -> str:
 
 async def get_current_user(authorization: str = Header(...)) -> dict:
     if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Invalid authorization header")
+        raise HTTPException(
+            status_code=401,
+            detail="Authorization header must be in format: Bearer <token>",
+        )
     token = authorization[len("Bearer "):]
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
@@ -142,12 +154,15 @@ async def google_login(body: GoogleLoginRequest):
             body.credential, google_requests.Request(), GOOGLE_CLIENT_ID
         )
     except ValueError:
-        raise HTTPException(status_code=401, detail="Invalid Google token")
+        raise HTTPException(
+            status_code=401,
+            detail="Google authentication failed: Invalid or expired credential token",
+        )
     except Exception as exc:
         logger.exception("Google token verification failed")
         raise HTTPException(
             status_code=502,
-            detail="Google token verification failed. Check backend network access and GOOGLE_CLIENT_ID.",
+            detail="Google token verification failed. Please try again.",
         ) from exc
 
     google_id = idinfo["sub"]
@@ -192,6 +207,22 @@ async def get_me(user: dict = Depends(get_current_user)):
             "picture": row["picture"],
         }
 
+# --- Spending Category Enum ---
+
+class SpendingCategory(str, Enum):
+    """Valid spending categories — shared by transactions and budget preferences."""
+    groceries      = "groceries"
+    dining         = "dining"
+    transportation = "transportation"
+    rent           = "rent"
+    utilities      = "utilities"
+    entertainment  = "entertainment"
+    travel         = "travel"
+    subscriptions  = "subscriptions"
+    healthcare     = "healthcare"
+    shopping       = "shopping"
+    income         = "income"
+
 
 # --- Item Models ---
 
@@ -202,6 +233,14 @@ class ItemCreate(BaseModel):
 class ItemUpdate(BaseModel):
     name: Optional[str] = None
     value: Optional[str] = None
+
+
+# --- Budget Models ---
+
+class BudgetCreate(BaseModel):
+    """Request body for creating or updating a budget limit."""
+    category: SpendingCategory  # validated against the enum; FastAPI returns 422 on invalid value
+    amount: float               # spending limit in USD; must be > 0
 
 
 # --- Transaction Models ---
@@ -364,3 +403,136 @@ async def fetch_n_transactions(limit: int = Query(default=10, ge=1, le=500), use
             int(user["user_id"]), limit,
         )
         return [_serialize_transaction(r) for r in rows]
+
+
+# --- Budget Routes ---
+
+@app.post("/api/budgets", status_code=200)
+async def create_budget(budget: BudgetCreate):
+    """
+    Set (or update) a monthly spending limit for a category.
+
+    - category: one of the SpendingCategory enum values
+    - amount: spending limit in USD; must be a positive number
+
+    Returns {"status": 0} on success.
+    If the same category already has a budget, the amount is overwritten (upsert).
+    """
+    # Reject non-positive amounts — a budget of $0 or negative makes no sense
+    if budget.amount <= 0:
+        raise HTTPException(status_code=422, detail="Amount must be greater than 0")
+
+    try:
+        async with pool.acquire() as conn:
+            # INSERT or UPDATE: category is the primary key, so duplicate calls
+            # for the same category simply update the stored amount instead of erroring
+            await conn.execute(
+                """INSERT INTO "BudgetPrefs" (category, amount)
+                   VALUES ($1, $2)
+                   ON CONFLICT (category) DO UPDATE SET amount = EXCLUDED.amount""",
+                budget.category.value,
+                budget.amount,
+            )
+        return {"status": 0}
+    except Exception as e:
+        # Log the full error server-side; return a generic failure code to the caller
+        print(f"[ERROR] create_budget: {e}")
+        return JSONResponse(status_code=500, content={"status": 1, "error": str(e)})
+
+
+# --- NL2SQL Models ---
+
+class NL2SQLGenerateRequest(BaseModel):
+    question: str
+
+class NL2SQLExecuteRequest(BaseModel):
+    sql: str
+
+
+# --- NL2SQL Routes ---
+
+@app.post("/api/nl2sql/generate")
+async def nl2sql_generate(req: NL2SQLGenerateRequest):
+    """Translate a natural language question to SQL using AlloyDB AI NL2SQL."""
+    if not req.question.strip():
+        raise HTTPException(status_code=422, detail="question must not be empty")
+    async with pool.acquire() as conn:
+        try:
+            row = await conn.fetchrow(
+                "SELECT alloydb_ai_nl.get_sql($1::text, $2::text, '{}'::json) ->> 'sql' AS sql",
+                "app_config",
+                req.question.strip(),
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"NL2SQL generation failed: {e}")
+    return {"question": req.question, "sql": row["sql"]}
+
+
+@app.post("/api/nl2sql/execute")
+async def nl2sql_execute(req: NL2SQLExecuteRequest):
+    """Execute a SQL query (SELECT only) and return columns + rows."""
+    sql = req.sql.strip().rstrip(";")
+    if not sql.upper().startswith("SELECT"):
+        raise HTTPException(status_code=422, detail="Only SELECT statements are allowed")
+    async with pool.acquire() as conn:
+        try:
+            rows = await conn.fetch(sql)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Query failed: {e}")
+    if not rows:
+        return {"columns": [], "rows": []}
+    columns = list(rows[0].keys())
+    result_rows = []
+    for row in rows:
+        result_rows.append([
+            str(v) if not isinstance(v, (int, float, bool, type(None))) else v
+            for v in row.values()
+        ])
+    return {"columns": columns, "rows": result_rows}
+
+
+@app.get("/api/budgets/usage")
+async def fetch_budget_usage():
+    """
+    Return spending vs. budget limit for every category the user has configured.
+
+    Spending is summed from the transactions table for the current calendar month.
+    Only categories present in BudgetPrefs are included in the response.
+
+    Response shape: [{"category": str, "total_spent": float, "budget_limit": float}, ...]
+    Example:        [{"category": "dining", "total_spent": 120.0, "budget_limit": 100.0}]
+    """
+    # Compute the start of the current calendar month (UTC), same as current-month endpoint
+    now = datetime.now(timezone.utc)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT
+                bp.category,
+                -- Sum all transaction amounts for this category this month.
+                -- ABS() because debit amounts are stored as negatives; we want a positive spend figure.
+                -- COALESCE returns 0 when there are no matching transactions yet.
+                COALESCE(SUM(ABS(t.amount)), 0) AS total_spent,
+                bp.amount                        AS budget_limit
+            FROM "BudgetPrefs" bp
+            LEFT JOIN transactions t
+                -- Match on category name (case-insensitive) and restrict to current month
+                ON LOWER(t.spending_category) = LOWER(bp.category)
+               AND t.timestamp >= $1
+            GROUP BY bp.category, bp.amount
+            ORDER BY bp.category
+            """,
+            month_start,
+        )
+
+    # Convert NUMERIC fields to float for JSON serialisation
+    return [
+        {
+            "category":     row["category"],
+            "total_spent":  float(row["total_spent"]),
+            "budget_limit": float(row["budget_limit"]),
+        }
+        for row in rows
+    ]
