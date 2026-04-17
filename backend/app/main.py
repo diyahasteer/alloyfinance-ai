@@ -1,5 +1,6 @@
 import os
 import uuid
+import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
@@ -14,11 +15,22 @@ from pydantic import BaseModel, Field
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
+
 app = FastAPI(title="AlloyFinance API", version="0.1.0")
+
+CORS_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        "CORS_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173",
+    ).split(",")
+    if origin.strip()
+]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -131,6 +143,12 @@ async def google_login(body: GoogleLoginRequest):
         )
     except ValueError:
         raise HTTPException(status_code=401, detail="Invalid Google token")
+    except Exception as exc:
+        logger.exception("Google token verification failed")
+        raise HTTPException(
+            status_code=502,
+            detail="Google token verification failed. Check backend network access and GOOGLE_CLIENT_ID.",
+        ) from exc
 
     google_id = idinfo["sub"]
     email = idinfo["email"]
