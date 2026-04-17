@@ -1,20 +1,4 @@
 services:
-  db:
-    image: postgres:16
-    environment:
-      POSTGRES_USER: alloydbadmin
-      POSTGRES_PASSWORD: alloydb123
-      POSTGRES_DB: postgres
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U alloydbadmin -d postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
   backend:
     build: ./backend
     ports:
@@ -25,9 +9,6 @@ services:
       - DATABASE_URL=${DATABASE_URL}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - JWT_SECRET=${JWT_SECRET}
-    depends_on:
-      db:
-        condition: service_healthy
 
   frontend:
     build:
@@ -40,5 +21,3 @@ services:
     depends_on:
       - backend
 
-volumes:
-  pgdata:
