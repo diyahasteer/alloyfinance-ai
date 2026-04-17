@@ -134,7 +134,10 @@ def create_jwt(user_id: str, email: str) -> str:
 
 async def get_current_user(authorization: str = Header(...)) -> dict:
     if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Invalid authorization header")
+        raise HTTPException(
+            status_code=401,
+            detail="Authorization header must be in format: Bearer <token>",
+        )
     token = authorization[len("Bearer "):]
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
@@ -151,7 +154,10 @@ async def google_login(body: GoogleLoginRequest):
             body.credential, google_requests.Request(), GOOGLE_CLIENT_ID
         )
     except ValueError:
-        raise HTTPException(status_code=401, detail="Invalid Google token")
+        raise HTTPException(
+            status_code=401,
+            detail="Google authentication failed: Invalid or expired credential token",
+        )
     except Exception as exc:
         logger.exception("Google token verification failed")
         raise HTTPException(
