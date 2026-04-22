@@ -30,3 +30,11 @@ synthetic-data/alloydb-auth-proxy*
 
 # frontend deps
 node_modules/
+
+# Kubernetes secrets
+*-secret.yaml
+*-secret.yml
+*.secret.yaml
+*.secret.yml
+secrets/
+k8s/secrets/
