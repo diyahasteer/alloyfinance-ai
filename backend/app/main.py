@@ -58,7 +58,14 @@ pool: asyncpg.Pool = None
 @app.on_event("startup")
 async def startup():
     global pool
-    pool = await asyncpg.create_pool(DATABASE_URL, ssl=False)
+    pool = await asyncpg.create_pool(
+        DATABASE_URL,
+        ssl=False,
+        min_size=5,
+        max_size=20,
+        command_timeout=60,
+        max_inactive_connection_lifetime=300,
+    )
     async with pool.acquire() as conn:
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS items (
@@ -468,27 +475,29 @@ async def nl2sql_generate(req: NL2SQLGenerateRequest):
     return {"question": req.question, "sql": row["sql"]}
 
 
+ROW_LIMIT = 200
+
 @app.post("/api/nl2sql/execute")
 async def nl2sql_execute(req: NL2SQLExecuteRequest):
-    """Execute a SQL query (SELECT only) and return columns + rows."""
+    """Execute a SQL query (SELECT only) and return columns + rows (capped at ROW_LIMIT)."""
     sql = req.sql.strip().rstrip(";")
     if not sql.upper().startswith("SELECT"):
         raise HTTPException(status_code=422, detail="Only SELECT statements are allowed")
     async with pool.acquire() as conn:
         try:
-            rows = await conn.fetch(sql)
+            rows = await conn.fetch(f"SELECT * FROM ({sql}) _q LIMIT {ROW_LIMIT + 1}")
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Query failed: {e}")
     if not rows:
-        return {"columns": [], "rows": []}
+        return {"columns": [], "rows": [], "truncated": False}
+    truncated = len(rows) > ROW_LIMIT
+    rows = rows[:ROW_LIMIT]
     columns = list(rows[0].keys())
-    result_rows = []
-    for row in rows:
-        result_rows.append([
-            str(v) if not isinstance(v, (int, float, bool, type(None))) else v
-            for v in row.values()
-        ])
-    return {"columns": columns, "rows": result_rows}
+    result_rows = [
+        [str(v) if not isinstance(v, (int, float, bool, type(None))) else v for v in row.values()]
+        for row in rows
+    ]
+    return {"columns": columns, "rows": result_rows, "truncated": truncated}
 
 
 @app.get("/api/budgets/usage")
