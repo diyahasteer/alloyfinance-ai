@@ -1,6 +1,7 @@
 import os
 import csv
 from pathlib import Path
+from collections import Counter
 
 import psycopg2
 from psycopg2.extras import execute_values
@@ -8,6 +9,8 @@ from dotenv import load_dotenv
 
 
 def main() -> None:
+    dev_user_email = "foo@bar.com"
+
     # Load environment variables from .env at repo root
     script_dir = Path(__file__).resolve().parent
     env_path = script_dir.parent / ".env"
@@ -28,8 +31,36 @@ def main() -> None:
             with conn.cursor() as cur:
                 cur.execute(
                     """
+                    CREATE TABLE IF NOT EXISTS users (
+                        id SERIAL PRIMARY KEY,
+                        google_id TEXT UNIQUE,
+                        email TEXT UNIQUE NOT NULL,
+                        password_hash TEXT,
+                        name TEXT,
+                        picture TEXT,
+                        created_at TIMESTAMPTZ DEFAULT NOW()
+                    )
+                    """
+                )
+
+                cur.execute(
+                    """
+                    INSERT INTO users (email, password_hash, name, picture)
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (email) DO UPDATE SET
+                        password_hash = EXCLUDED.password_hash,
+                        name = EXCLUDED.name
+                    RETURNING id
+                    """,
+                    (dev_user_email, None, "Dev User", None),
+                )
+                dev_user_id = cur.fetchone()[0]
+
+                cur.execute(
+                    """
                     CREATE TABLE IF NOT EXISTS transactions (
                         transaction_id UUID PRIMARY KEY,
+                        user_id INTEGER NOT NULL REFERENCES users(id),
                         timestamp TIMESTAMPTZ NOT NULL,
                         amount NUMERIC(18, 2) NOT NULL,
                         merchant_name TEXT NOT NULL,
@@ -43,9 +74,6 @@ def main() -> None:
                         description TEXT
                     )
                     """
-                )
-                cur.execute(
-                    "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS description TEXT"
                 )
 
                 # Read CSV rows
@@ -73,6 +101,7 @@ def main() -> None:
                     records.append(
                         (
                             tx_id,
+                            dev_user_id,
                             r["timestamp"],
                             float(r["amount"]),
                             r["merchant_name"],
@@ -95,6 +124,7 @@ def main() -> None:
                 insert_sql = """
                     INSERT INTO transactions (
                         transaction_id,
+                        user_id,
                         timestamp,
                         amount,
                         merchant_name,
@@ -116,6 +146,12 @@ def main() -> None:
                 cur.execute("SELECT COUNT(*) FROM transactions;")
                 after = cur.fetchone()[0]
                 print(f"Inserted {after - before} new transactions into the 'transactions' table.")
+                print(f"Assigned imported rows to user_id={dev_user_id} ({dev_user_email}).")
+
+                category_counts = Counter(r["spending_category"] for r in rows)
+                print("CSV category counts:")
+                for category, count in sorted(category_counts.items()):
+                    print(f"  - {category}: {count}")
     finally:
         conn.close()
 

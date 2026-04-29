@@ -63,6 +63,20 @@ export function useTransactions() {
     }
   }, []);
 
+  const fetchAll = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await transactionsApi.getAll();
+      setTransactions(data);
+      setActiveFilter("all-time");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   const createTransaction = useCallback(async (txn) => {
     const created = await transactionsApi.create(txn);
     setTransactions((prev) => [created, ...prev]);
@@ -82,6 +96,7 @@ export function useTransactions() {
     fetchByCategory,
     fetchCurrentMonth,
     fetchPreviousMonth,
+    fetchAll,
     createTransaction,
   };
 }

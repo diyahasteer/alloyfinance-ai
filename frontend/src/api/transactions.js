@@ -49,4 +49,12 @@ export const transactionsApi = {
     if (!res.ok) throw new Error("Failed to fetch recent transactions");
     return res.json();
   },
+
+  getAll: async () => {
+    const res = await fetch(`${BASE_URL}/api/transactions/all`, {
+      headers: authHeaders(),
+    });
+    if (!res.ok) throw new Error("Failed to fetch all transactions");
+    return res.json();
+  },
 };

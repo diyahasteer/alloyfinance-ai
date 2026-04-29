@@ -25,7 +25,6 @@ jobs:
           push: true
           build-args: |
             VITE_API_URL=${{ secrets.VITE_API_URL }}
-            VITE_GOOGLE_CLIENT_ID=${{ secrets.VITE_GOOGLE_CLIENT_ID }}
           tags: |
             annabellanguyen/alloydb-finance-ai:latest
             annabellanguyen/alloydb-finance-ai:${{ github.sha }}
