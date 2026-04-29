@@ -44,6 +44,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from starlette.middleware.base import BaseHTTPMiddleware
+
+class COOPMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        response.headers["Cross-Origin-Opener-Policy"] = "unsafe-none"
+        return response
+
+app.add_middleware(COOPMiddleware)
+
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL is not set")
@@ -55,6 +65,8 @@ if not GOOGLE_CLIENT_ID:
 JWT_SECRET = os.getenv("JWT_SECRET")
 if not JWT_SECRET:
     raise ValueError("JWT_SECRET is not set")
+
+DATABASE_SSL_MODE = os.getenv("DATABASE_SSL_MODE", "disable").lower()
 
 # JWT configuration for user session tokens.
 JWT_ALGORITHM = "HS256"
@@ -156,7 +168,7 @@ async def startup():
     global pool
     pool = await asyncpg.create_pool(
         DATABASE_URL,
-        ssl=False,
+        ssl="require" if DATABASE_SSL_MODE == "require" else False,
         min_size=5,
         max_size=20,
         command_timeout=60,

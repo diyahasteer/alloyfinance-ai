@@ -33,3 +33,11 @@ node_modules/
 .DS_Store
 __pycache__/
 *.pyc
+
+# Kubernetes secrets
+*-secret.yaml
+*-secret.yml
+*.secret.yaml
+*.secret.yml
+secrets/
+k8s/secrets/
