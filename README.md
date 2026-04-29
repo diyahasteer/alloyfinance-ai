@@ -35,3 +35,10 @@ npm run dev
 Open the app at `http://localhost:5173` and it will call the backend at `http://localhost:8000/api/hello`.
 
 > **Note:** Manual setup requires a running PostgreSQL instance matching the credentials in `.env`.
+
+## Authentication
+
+- The app now uses email/password authentication with JWT bearer tokens.
+- A dev user is automatically seeded on backend startup:
+  - email: `foo@bar.com`
+  - password: `password`
