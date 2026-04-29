@@ -192,7 +192,7 @@ function Dashboard({ auth }) {
           </button>
         </div>
 
-        {tab === "nl2sql" && <NL2SQLPanel />}
+        {tab === "nl2sql" && <NL2SQLPanel userId={auth.user?.id} />}
 
         {tab === "transactions" && (
           <>

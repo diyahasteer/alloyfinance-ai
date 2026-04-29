@@ -11,7 +11,7 @@ const CHIPS = [
   "Compare my spending to my budget limits",
 ];
 
-export default function NL2SQLPanel() {
+export default function NL2SQLPanel({ userId }) {
   const [question, setQuestion] = useState("");
   const [sql, setSql] = useState("");
   const [result, setResult] = useState(null);
@@ -23,13 +23,16 @@ export default function NL2SQLPanel() {
   const handleGenerate = async () => {
     const q = question.trim();
     if (!q) return;
+    const finalQuery = userId ? `${q} for user: ${userId}` : q;
+    // eslint-disable-next-line no-console
+    console.log("[NL2SQL] original:", q, "| userId:", userId, "| sent:", finalQuery);
     setGenLoading(true);
     setGenError("");
     setSql("");
     setResult(null);
     setRunError("");
     try {
-      const data = await nl2sqlApi.generate(q);
+      const data = await nl2sqlApi.generate(finalQuery);
       setSql(data.sql);
     } catch (e) {
       setGenError(e.message);
