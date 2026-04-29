@@ -1,8 +1,10 @@
+import csv
 import os
 import uuid
 import logging
 from datetime import datetime, timezone, timedelta
 from enum import Enum
+from pathlib import Path
 from typing import Optional
 
 import jwt
@@ -17,10 +19,14 @@ from pydantic import BaseModel, Field
 
 load_dotenv()
 
+# Standard logger for any backend errors or debugging information.
 logger = logging.getLogger(__name__)
 
+# FastAPI application instance that defines our HTTP API surface.
 app = FastAPI(title="AlloyFinance API", version="0.1.0")
 
+# Allowed origins for browser-based requests. We read these from env vars
+# so the same backend can be deployed locally and in production safely.
 CORS_ORIGINS = [
     origin.strip()
     for origin in os.getenv(
@@ -50,15 +56,112 @@ JWT_SECRET = os.getenv("JWT_SECRET")
 if not JWT_SECRET:
     raise ValueError("JWT_SECRET is not set")
 
+# JWT configuration for user session tokens.
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = 24
 
+# Path to the shared transaction seed dataset used for new users.
+# We only need this file when a user logs in for the first time.
+SEED_TRANSACTIONS_FILE = Path(__file__).resolve().parents[1] / "synthetic-data" / "output_data" / "transactions.csv"
+_cached_seed_transactions: list[dict] = []
+
+# Connection pool for the PostgreSQL/AlloyDB database.
 pool: asyncpg.Pool = None
+
+def _load_seed_transactions() -> list[dict]:
+    """Read the seed CSV once and cache it for use by subsequent users.
+
+    This function converts the CSV rows into Python dicts with typed
+    values so they can be inserted into the database directly.
+    """
+    global _cached_seed_transactions
+    if _cached_seed_transactions:
+        return _cached_seed_transactions
+
+    if not SEED_TRANSACTIONS_FILE.exists():
+        return []
+
+    with open(SEED_TRANSACTIONS_FILE, newline="", encoding="utf-8") as fh:
+        reader = csv.DictReader(fh)
+        for row in reader:
+            timestamp = row["timestamp"]
+            if timestamp.endswith("Z"):
+                timestamp = timestamp[:-1] + "+00:00"
+            _cached_seed_transactions.append({
+                "timestamp": datetime.fromisoformat(timestamp),
+                "amount": float(row["amount"]),
+                "merchant_name": row["merchant_name"],
+                "merchant_category": row["merchant_category"],
+                "spending_category": row["spending_category"],
+                "transaction_type": row["transaction_type"],
+                "payment_method": row["payment_method"],
+                "city": row["city"],
+                "country": row["country"],
+                "currency": row["currency"],
+                "description": None,
+            })
+
+    return _cached_seed_transactions
+
+async def _seed_transactions_for_user(conn: asyncpg.Connection, user_id: int) -> None:
+    """Assign the shared seed transactions to a user if they have none.
+
+    This avoids duplicating seeded rows for returning users while ensuring
+    that every authenticated user has a default dataset available.
+    """
+    existing_count = await conn.fetchval(
+        "SELECT COUNT(*) FROM transactions WHERE user_id = $1",
+        user_id,
+    )
+    if existing_count and existing_count > 0:
+        return
+
+    seed_rows = _load_seed_transactions()
+    if not seed_rows:
+        return
+
+    await conn.executemany(
+        """INSERT INTO transactions (
+               transaction_id, user_id, timestamp, amount, merchant_name,
+               merchant_category, spending_category, transaction_type,
+               payment_method, city, country, currency, description
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)""",
+        [
+            (
+                uuid.uuid4(),
+                user_id,
+                row["timestamp"],
+                row["amount"],
+                row["merchant_name"],
+                row["merchant_category"],
+                row["spending_category"],
+                row["transaction_type"],
+                row["payment_method"],
+                row["city"],
+                row["country"],
+                row["currency"],
+                row["description"],
+            )
+            for row in seed_rows
+        ],
+    )
 
 @app.on_event("startup")
 async def startup():
+    """Initialize the database connection pool and ensure required schema exists.
+
+    This runs once when the FastAPI app starts, so the app can safely assume
+    that the tables exist for users, items, transactions, and budget preferences.
+    """
     global pool
-    pool = await asyncpg.create_pool(DATABASE_URL, ssl=False)
+    pool = await asyncpg.create_pool(
+        DATABASE_URL,
+        ssl=False,
+        min_size=5,
+        max_size=20,
+        command_timeout=60,
+        max_inactive_connection_lifetime=300,
+    )
     async with pool.acquire() as conn:
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS items (
@@ -116,14 +219,21 @@ async def startup():
 
 @app.on_event("shutdown")
 async def shutdown():
+    """Close the database pool cleanly when the application shuts down."""
     await pool.close()
 
 # --- Auth ---
+# Authentication is based on Google sign-in and JWT session tokens.
 
 class GoogleLoginRequest(BaseModel):
     credential: str
 
 def create_jwt(user_id: str, email: str) -> str:
+    """Build a signed JWT for the authenticated user.
+
+    The token contains the user id and email and expires after a short period.
+    This token is returned to the frontend and used for all subsequent API calls.
+    """
     payload = {
         "sub": user_id,
         "email": email,
@@ -133,6 +243,11 @@ def create_jwt(user_id: str, email: str) -> str:
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 async def get_current_user(authorization: str = Header(...)) -> dict:
+    """Extract and verify the bearer token from the Authorization header.
+
+    If the token is valid, return a minimal user identity dict for route dependencies.
+    If invalid, raise a 401 so protected endpoints reject the request.
+    """
     if not authorization.startswith("Bearer "):
         raise HTTPException(
             status_code=401,
@@ -149,6 +264,11 @@ async def get_current_user(authorization: str = Header(...)) -> dict:
 
 @app.post("/auth/google")
 async def google_login(body: GoogleLoginRequest):
+    """Handle Google sign-in from the frontend and create/update the user record.
+
+    This endpoint verifies the Google credential, upserts the user row, seeds
+    default transactions for first-time users, and returns a JWT for the client.
+    """
     try:
         idinfo = id_token.verify_oauth2_token(
             body.credential, google_requests.Request(), GOOGLE_CLIENT_ID
@@ -179,6 +299,8 @@ async def google_login(body: GoogleLoginRequest):
             google_id, email, name, picture,
         )
 
+        await _seed_transactions_for_user(conn, int(row["id"]))
+
     user_id = str(row["id"])
     token = create_jwt(user_id, email)
     return {
@@ -193,6 +315,11 @@ async def google_login(body: GoogleLoginRequest):
 
 @app.get("/auth/me")
 async def get_me(user: dict = Depends(get_current_user)):
+    """Return the current authenticated user's profile.
+
+    Also trigger transaction seeding for any existing users who have not yet
+    received the shared dataset. This makes first-login behavior idempotent.
+    """
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             "SELECT id, email, name, picture FROM users WHERE id = $1",
@@ -200,6 +327,9 @@ async def get_me(user: dict = Depends(get_current_user)):
         )
         if not row:
             raise HTTPException(status_code=404, detail="User not found")
+
+        await _seed_transactions_for_user(conn, int(row["id"]))
+
         return {
             "id": str(row["id"]),
             "email": row["email"],
@@ -208,7 +338,8 @@ async def get_me(user: dict = Depends(get_current_user)):
         }
 
 # --- Spending Category Enum ---
-
+# Define the allowed spending categories that can be used in transactions
+# and budget preference requests.
 class SpendingCategory(str, Enum):
     """Valid spending categories — shared by transactions and budget preferences."""
     groceries      = "groceries"
@@ -225,6 +356,7 @@ class SpendingCategory(str, Enum):
 
 
 # --- Item Models ---
+# Request payload definitions for the generic items CRUD endpoints.
 
 class ItemCreate(BaseModel):
     name: str
@@ -236,6 +368,7 @@ class ItemUpdate(BaseModel):
 
 
 # --- Budget Models ---
+# Request payload definitions for budget preference operations.
 
 class BudgetCreate(BaseModel):
     """Request body for creating or updating a budget limit."""
@@ -259,7 +392,11 @@ class TransactionCreate(BaseModel):
 
 
 def _serialize_transaction(row: asyncpg.Record) -> dict:
-    """Convert a transaction row to a JSON-friendly dict."""
+    """Convert a transaction row to JSON-safe primitives for API responses.
+
+    This normalizes UUIDs, timestamps, and numeric values so the frontend can
+    render them directly without driver-specific types.
+    """
     d = dict(row)
     d["transaction_id"] = str(d["transaction_id"])
     d["timestamp"] = d["timestamp"].isoformat()
@@ -268,6 +405,7 @@ def _serialize_transaction(row: asyncpg.Record) -> dict:
 
 
 # --- General Routes ---
+# Lightweight endpoints for health checks and example responses.
 
 @app.get("/health")
 def health_check() -> dict:
@@ -280,6 +418,7 @@ def hello(name: str = "world") -> dict:
 
 
 # --- Item Routes ---
+# Simple CRUD endpoints for the generic items table used by the demo frontend.
 
 @app.get("/items")
 async def get_items():
@@ -327,6 +466,8 @@ async def delete_item(item_id: int):
 
 
 # --- Transaction Routes ---
+# These endpoints are scoped to the authenticated user and operate only on
+# that user's transaction rows.
 
 @app.post("/api/transactions", status_code=201)
 async def create_transaction(txn: TransactionCreate, user: dict = Depends(get_current_user)):
@@ -406,6 +547,7 @@ async def fetch_n_transactions(limit: int = Query(default=10, ge=1, le=500), use
 
 
 # --- Budget Routes ---
+# Budget operations let the user create or update spending limits by category.
 
 @app.post("/api/budgets", status_code=200)
 async def create_budget(budget: BudgetCreate):
@@ -468,27 +610,29 @@ async def nl2sql_generate(req: NL2SQLGenerateRequest):
     return {"question": req.question, "sql": row["sql"]}
 
 
+ROW_LIMIT = 200
+
 @app.post("/api/nl2sql/execute")
 async def nl2sql_execute(req: NL2SQLExecuteRequest):
-    """Execute a SQL query (SELECT only) and return columns + rows."""
+    """Execute a SQL query (SELECT only) and return columns + rows (capped at ROW_LIMIT)."""
     sql = req.sql.strip().rstrip(";")
     if not sql.upper().startswith("SELECT"):
         raise HTTPException(status_code=422, detail="Only SELECT statements are allowed")
     async with pool.acquire() as conn:
         try:
-            rows = await conn.fetch(sql)
+            rows = await conn.fetch(f"SELECT * FROM ({sql}) _q LIMIT {ROW_LIMIT + 1}")
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Query failed: {e}")
     if not rows:
-        return {"columns": [], "rows": []}
+        return {"columns": [], "rows": [], "truncated": False}
+    truncated = len(rows) > ROW_LIMIT
+    rows = rows[:ROW_LIMIT]
     columns = list(rows[0].keys())
-    result_rows = []
-    for row in rows:
-        result_rows.append([
-            str(v) if not isinstance(v, (int, float, bool, type(None))) else v
-            for v in row.values()
-        ])
-    return {"columns": columns, "rows": result_rows}
+    result_rows = [
+        [str(v) if not isinstance(v, (int, float, bool, type(None))) else v for v in row.values()]
+        for row in rows
+    ]
+    return {"columns": columns, "rows": result_rows, "truncated": truncated}
 
 
 @app.get("/api/budgets/usage")

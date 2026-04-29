@@ -3,6 +3,7 @@ import { GoogleLogin } from "@react-oauth/google";
 import { useTransactions } from "./hooks/useTransactions";
 import TransactionForm from "./components/TransactionForm";
 import TransactionTable from "./components/TransactionTable";
+import NL2SQLPanel from "./components/NL2SQLPanel";
 
 const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -130,6 +131,7 @@ function Dashboard({ auth }) {
     createTransaction,
   } = useTransactions();
 
+  const [tab, setTab] = useState("transactions");
   const [showForm, setShowForm] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState("");
 
@@ -175,62 +177,83 @@ function Dashboard({ auth }) {
       </header>
 
       <main className="main">
-        <section className="controls">
-          <div className="filter-group">
-            <button
-              className={`btn btn-filter ${activeFilter === "recent" ? "active" : ""}`}
-              onClick={() => { setCategoryFilter(""); fetchRecent(); }}
-            >
-              Recent
-            </button>
-            <button
-              className={`btn btn-filter ${activeFilter === "current-month" ? "active" : ""}`}
-              onClick={() => { setCategoryFilter(""); fetchCurrentMonth(); }}
-            >
-              This Month
-            </button>
-            <button
-              className={`btn btn-filter ${activeFilter === "previous-month" ? "active" : ""}`}
-              onClick={() => { setCategoryFilter(""); fetchPreviousMonth(); }}
-            >
-              Last Month
-            </button>
-
-            <select
-              className="category-select"
-              value={categoryFilter}
-              onChange={handleCategoryChange}
-            >
-              <option value="">All Categories</option>
-              {CATEGORIES.map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
-          </div>
-
+        <div className="filter-group">
           <button
-            className="btn btn-primary"
-            onClick={() => setShowForm((s) => !s)}
+            className={`btn btn-filter ${tab === "transactions" ? "active" : ""}`}
+            onClick={() => setTab("transactions")}
           >
-            {showForm ? "Cancel" : "+ New Transaction"}
+            Transactions
           </button>
-        </section>
+          <button
+            className={`btn btn-filter ${tab === "nl2sql" ? "active" : ""}`}
+            onClick={() => setTab("nl2sql")}
+          >
+            NL2SQL
+          </button>
+        </div>
 
-        {showForm && (
-          <section className="card">
-            <TransactionForm onSubmit={handleCreate} />
-          </section>
+        {tab === "nl2sql" && <NL2SQLPanel />}
+
+        {tab === "transactions" && (
+          <>
+            <section className="controls">
+              <div className="filter-group">
+                <button
+                  className={`btn btn-filter ${activeFilter === "recent" ? "active" : ""}`}
+                  onClick={() => { setCategoryFilter(""); fetchRecent(); }}
+                >
+                  Recent
+                </button>
+                <button
+                  className={`btn btn-filter ${activeFilter === "current-month" ? "active" : ""}`}
+                  onClick={() => { setCategoryFilter(""); fetchCurrentMonth(); }}
+                >
+                  This Month
+                </button>
+                <button
+                  className={`btn btn-filter ${activeFilter === "previous-month" ? "active" : ""}`}
+                  onClick={() => { setCategoryFilter(""); fetchPreviousMonth(); }}
+                >
+                  Last Month
+                </button>
+
+                <select
+                  className="category-select"
+                  value={categoryFilter}
+                  onChange={handleCategoryChange}
+                >
+                  <option value="">All Categories</option>
+                  {CATEGORIES.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+
+              <button
+                className="btn btn-primary"
+                onClick={() => setShowForm((s) => !s)}
+              >
+                {showForm ? "Cancel" : "+ New Transaction"}
+              </button>
+            </section>
+
+            {showForm && (
+              <section className="card">
+                <TransactionForm onSubmit={handleCreate} />
+              </section>
+            )}
+
+            {error && <p className="global-error">{error}</p>}
+
+            <section className="card">
+              <div className="table-header">
+                <h2>{filterLabel()}</h2>
+                <span className="txn-count">{transactions.length} transactions</span>
+              </div>
+              <TransactionTable transactions={transactions} loading={loading} />
+            </section>
+          </>
         )}
-
-        {error && <p className="global-error">{error}</p>}
-
-        <section className="card">
-          <div className="table-header">
-            <h2>{filterLabel()}</h2>
-            <span className="txn-count">{transactions.length} transactions</span>
-          </div>
-          <TransactionTable transactions={transactions} loading={loading} />
-        </section>
       </main>
     </div>
   );
