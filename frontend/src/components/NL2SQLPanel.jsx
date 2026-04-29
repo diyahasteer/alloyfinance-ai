@@ -13,52 +13,33 @@ const CHIPS = [
 
 export default function NL2SQLPanel({ userId }) {
   const [question, setQuestion] = useState("");
-  const [sql, setSql] = useState("");
   const [result, setResult] = useState(null);
-  const [genLoading, setGenLoading] = useState(false);
-  const [runLoading, setRunLoading] = useState(false);
-  const [genError, setGenError] = useState("");
-  const [runError, setRunError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const handleGenerate = async () => {
+  const handleAsk = async () => {
     const q = question.trim();
     if (!q) return;
     const finalQuery = userId ? `${q} for user: ${userId}` : q;
     // eslint-disable-next-line no-console
     console.log("[NL2SQL] original:", q, "| userId:", userId, "| sent:", finalQuery);
-    setGenLoading(true);
-    setGenError("");
-    setSql("");
-    setResult(null);
-    setRunError("");
-    try {
-      const data = await nl2sqlApi.generate(finalQuery);
-      setSql(data.sql);
-    } catch (e) {
-      setGenError(e.message);
-    } finally {
-      setGenLoading(false);
-    }
-  };
-
-  const handleRun = async () => {
-    if (!sql) return;
-    setRunLoading(true);
-    setRunError("");
+    setLoading(true);
+    setError("");
     setResult(null);
     try {
-      const data = await nl2sqlApi.execute(sql);
+      const generated = await nl2sqlApi.generate(finalQuery);
+      const data = await nl2sqlApi.execute(generated.sql);
       setResult(data);
     } catch (e) {
-      setRunError(e.message);
+      setError(e.message);
     } finally {
-      setRunLoading(false);
+      setLoading(false);
     }
   };
 
   const handleKeyDown = (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-      handleGenerate();
+      handleAsk();
     }
   };
 
@@ -77,7 +58,7 @@ export default function NL2SQLPanel({ userId }) {
           onKeyDown={handleKeyDown}
           rows={3}
         />
-        <p className="nl-hint">Press ⌘ Enter or click Generate SQL</p>
+        <p className="nl-hint">Press ⌘ Enter or click Ask question</p>
 
         <div className="nl-chips">
           {CHIPS.map((chip) => (
@@ -94,34 +75,15 @@ export default function NL2SQLPanel({ userId }) {
         <div style={{ marginTop: "1rem", display: "flex", alignItems: "center", gap: "0.75rem" }}>
           <button
             className="btn btn-primary"
-            onClick={handleGenerate}
-            disabled={!question.trim() || genLoading}
+            onClick={handleAsk}
+            disabled={!question.trim() || loading}
           >
-            {genLoading ? "Generating…" : "Generate SQL"}
+            {loading ? "Loading..." : "Ask question"}
           </button>
         </div>
 
-        {genError && <p className="global-error" style={{ marginTop: "0.75rem" }}>{genError}</p>}
+        {error && <p className="global-error" style={{ marginTop: "0.75rem" }}>{error}</p>}
       </section>
-
-      {sql && (
-        <section className="card">
-          <div className="table-header">
-            <h2>Generated SQL</h2>
-          </div>
-          <pre className="sql-block">{sql}</pre>
-          <div style={{ marginTop: "1rem", display: "flex", alignItems: "center", gap: "0.75rem" }}>
-            <button
-              className="btn btn-primary"
-              onClick={handleRun}
-              disabled={runLoading}
-            >
-              {runLoading ? "Running…" : "Run SQL"}
-            </button>
-          </div>
-          {runError && <p className="global-error" style={{ marginTop: "0.75rem" }}>{runError}</p>}
-        </section>
-      )}
 
       {result && (
         <section className="card">
