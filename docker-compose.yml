@@ -11,14 +11,11 @@ services:
 
   frontend:
     image: node:20-alpine
+    pull_policy: always
     working_dir: /app
     volumes:
       - ./frontend:/app
       - /app/node_modules
-    build:
-      context: ./frontend
-      args:
-        - VITE_API_URL=${VITE_API_URL}
     ports:
       - "5173:5173"
     environment:
@@ -27,4 +24,3 @@ services:
     command: sh -c "npm install && npm run dev -- --host"
     depends_on:
       - backend
-
