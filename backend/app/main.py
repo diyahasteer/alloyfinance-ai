@@ -13,9 +13,8 @@ import asyncpg
 from fastapi import FastAPI, HTTPException, Query, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from google.oauth2 import id_token
-from google.auth.transport import requests as google_requests
 from pydantic import BaseModel, Field
+from passlib.context import CryptContext
 
 load_dotenv()
 
@@ -44,21 +43,33 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from starlette.middleware.base import BaseHTTPMiddleware
+
+class COOPMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        response.headers["Cross-Origin-Opener-Policy"] = "unsafe-none"
+        return response
+
+app.add_middleware(COOPMiddleware)
+
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL is not set")
-
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
-if not GOOGLE_CLIENT_ID:
-    raise ValueError("GOOGLE_CLIENT_ID is not set")
 
 JWT_SECRET = os.getenv("JWT_SECRET")
 if not JWT_SECRET:
     raise ValueError("JWT_SECRET is not set")
 
+DATABASE_SSL_MODE = os.getenv("DATABASE_SSL_MODE", "disable").lower()
+
 # JWT configuration for user session tokens.
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = 24
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+DEV_USER_EMAIL = "foo@bar.com"
+DEV_USER_PASSWORD = "password"
 
 # Path to the shared transaction seed dataset used for new users.
 # We only need this file when a user logs in for the first time.
@@ -145,6 +156,17 @@ async def _seed_transactions_for_user(conn: asyncpg.Connection, user_id: int) ->
             for row in seed_rows
         ],
     )
+def hash_password(password: str) -> str:
+    return pwd_context.hash(password)
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return pwd_context.verify(plain_password, hashed_password)
+
+
+def validate_password(password: str) -> None:
+    if len(password) < 8:
+        raise HTTPException(status_code=422, detail="Password must be at least 8 characters")
 
 @app.on_event("startup")
 async def startup():
@@ -156,7 +178,7 @@ async def startup():
     global pool
     pool = await asyncpg.create_pool(
         DATABASE_URL,
-        ssl=False,
+        ssl="require" if DATABASE_SSL_MODE == "require" else False,
         min_size=5,
         max_size=20,
         command_timeout=60,
@@ -174,12 +196,21 @@ async def startup():
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
-                google_id TEXT UNIQUE NOT NULL,
+                google_id TEXT UNIQUE,
                 email TEXT UNIQUE NOT NULL,
+                password_hash TEXT,
                 name TEXT,
                 picture TEXT,
                 created_at TIMESTAMPTZ DEFAULT NOW()
             )
+        """)
+        await conn.execute("""
+            ALTER TABLE users
+            ADD COLUMN IF NOT EXISTS password_hash TEXT
+        """)
+        await conn.execute("""
+            ALTER TABLE users
+            ALTER COLUMN google_id DROP NOT NULL
         """)
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS transactions (
@@ -209,6 +240,18 @@ async def startup():
             SET user_id = (SELECT id FROM users WHERE email = 'nikhil.m@berkeley.edu' LIMIT 1)
             WHERE user_id IS NULL
         """)
+        await conn.execute(
+            """INSERT INTO users (email, password_hash, name, picture)
+               VALUES ($1, $2, $3, $4)
+               ON CONFLICT (email) DO UPDATE SET
+                 password_hash = EXCLUDED.password_hash,
+                 name = EXCLUDED.name
+            """,
+            DEV_USER_EMAIL,
+            hash_password(DEV_USER_PASSWORD),
+            "Dev User",
+            None,
+        )
         # Budget preferences: one row per category, amount is the user's spending limit
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS "BudgetPrefs" (
@@ -235,8 +278,15 @@ async def shutdown():
 # --- Auth ---
 # Authentication is based on Google sign-in and JWT session tokens.
 
-class GoogleLoginRequest(BaseModel):
-    credential: str
+class SignupRequest(BaseModel):
+    email: str
+    password: str
+    name: Optional[str] = None
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
 
 def create_jwt(user_id: str, email: str) -> str:
     """Build a signed JWT for the authenticated user.
@@ -272,47 +322,65 @@ async def get_current_user(authorization: str = Header(...)) -> dict:
         raise HTTPException(status_code=401, detail="Invalid token")
     return {"user_id": payload["sub"], "email": payload["email"]}
 
-@app.post("/auth/google")
-async def google_login(body: GoogleLoginRequest):
-    """Handle Google sign-in from the frontend and create/update the user record.
-
-    This endpoint verifies the Google credential, upserts the user row, seeds
-    default transactions for first-time users, and returns a JWT for the client.
-    """
-    try:
-        idinfo = id_token.verify_oauth2_token(
-            body.credential, google_requests.Request(), GOOGLE_CLIENT_ID
-        )
-    except ValueError:
-        raise HTTPException(
-            status_code=401,
-            detail="Google authentication failed: Invalid or expired credential token",
-        )
-    except Exception as exc:
-        logger.exception("Google token verification failed")
-        raise HTTPException(
-            status_code=502,
-            detail="Google token verification failed. Please try again.",
-        ) from exc
-
-    google_id = idinfo["sub"]
-    email = idinfo["email"]
-    name = idinfo.get("name")
-    picture = idinfo.get("picture")
+@app.post("/auth/signup")
+async def signup(body: SignupRequest):
+    email = body.email.strip().lower()
+    if not email or "@" not in email:
+        raise HTTPException(status_code=422, detail="Valid email is required")
+    validate_password(body.password)
+    name = body.name.strip() if body.name else None
+    password_hash = hash_password(body.password)
 
     async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            """INSERT INTO users (google_id, email, name, picture)
-               VALUES ($1, $2, $3, $4)
-               ON CONFLICT (email) DO UPDATE SET name = $3, picture = $4
-               RETURNING id, email, name, picture""",
-            google_id, email, name, picture,
-        )
+        try:
+            row = await conn.fetchrow(
+                """INSERT INTO users (email, password_hash, name, picture)
+                   VALUES ($1, $2, $3, $4)
+                   RETURNING id, email, name, picture""",
+                email, password_hash, name, None,
+            )
+        except asyncpg.UniqueViolationError:
+            raise HTTPException(status_code=409, detail="User already exists")
+        except Exception as exc:
+            logger.exception("Signup failed")
+            raise HTTPException(status_code=500, detail="Signup failed") from exc
 
         await _seed_transactions_for_user(conn, int(row["id"]))
 
     user_id = str(row["id"])
     token = create_jwt(user_id, email)
+    return {
+        "token": token,
+        "user": {
+            "id": user_id,
+            "email": row["email"],
+            "name": row["name"],
+            "picture": row["picture"],
+        },
+    }
+
+
+@app.post("/auth/login")
+async def login(body: LoginRequest):
+    email = body.email.strip().lower()
+    if not email or "@" not in email:
+        raise HTTPException(status_code=422, detail="Valid email is required")
+
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """SELECT id, email, name, picture, password_hash
+               FROM users
+               WHERE email = $1""",
+            email,
+        )
+        if not row or not row["password_hash"]:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+
+        if not verify_password(body.password, row["password_hash"]):
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    user_id = str(row["id"])
+    token = create_jwt(user_id, row["email"])
     return {
         "token": token,
         "user": {
@@ -597,6 +665,16 @@ async def search_transactions(
         d["similarity"] = float(r["similarity"])
         results.append(d)
     return results
+@app.get("/api/transactions/all")
+async def fetch_all_transactions(user: dict = Depends(get_current_user)):
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """SELECT * FROM transactions
+               WHERE user_id = $1
+               ORDER BY timestamp DESC""",
+            int(user["user_id"]),
+        )
+        return [_serialize_transaction(r) for r in rows]
 
 
 # --- Budget Routes ---
