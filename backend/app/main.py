@@ -216,6 +216,16 @@ async def startup():
                 amount   NUMERIC(18, 2) NOT NULL
             )
         """)
+        await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
+        await conn.execute("""
+            ALTER TABLE transactions
+            ADD COLUMN IF NOT EXISTS embedding vector(768)
+        """)
+        await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
+        await conn.execute("""
+            ALTER TABLE transactions
+            ADD COLUMN IF NOT EXISTS embedding vector(768)
+        """)
 
 @app.on_event("shutdown")
 async def shutdown():
@@ -401,6 +411,7 @@ def _serialize_transaction(row: asyncpg.Record) -> dict:
     d["transaction_id"] = str(d["transaction_id"])
     d["timestamp"] = d["timestamp"].isoformat()
     d["amount"] = float(d["amount"])
+    d.pop("embedding", None)
     return d
 
 
@@ -473,6 +484,10 @@ async def delete_item(item_id: int):
 async def create_transaction(txn: TransactionCreate, user: dict = Depends(get_current_user)):
     txn_id = uuid.uuid4()
     ts = datetime.now(timezone.utc)
+    embed_text = " ".join(filter(None, [
+        txn.merchant_name, txn.merchant_category,
+        txn.spending_category, txn.description,
+    ]))
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """INSERT INTO transactions (
@@ -486,6 +501,15 @@ async def create_transaction(txn: TransactionCreate, user: dict = Depends(get_cu
             txn.payment_method, txn.city, txn.country, txn.currency,
             txn.description,
         )
+        try:
+            await conn.execute(
+                """UPDATE transactions
+                   SET embedding = google_ml.embedding('text-embedding-005', $1)::vector
+                   WHERE transaction_id = $2""",
+                embed_text, txn_id,
+            )
+        except Exception:
+            logger.exception("Failed to generate embedding for transaction %s", txn_id)
         return _serialize_transaction(row)
 
 
@@ -544,6 +568,35 @@ async def fetch_n_transactions(limit: int = Query(default=10, ge=1, le=500), use
             int(user["user_id"]), limit,
         )
         return [_serialize_transaction(r) for r in rows]
+
+
+@app.get("/api/transactions/search")
+async def search_transactions(
+    q: str = Query(..., min_length=1),
+    limit: int = Query(default=10, ge=1, le=50),
+    user: dict = Depends(get_current_user),
+):
+    """Semantic similarity search over the authenticated user's transactions."""
+    async with pool.acquire() as conn:
+        try:
+            rows = await conn.fetch(
+                """SELECT *,
+                       1 - (embedding <=> google_ml.embedding('text-embedding-005', $1)::vector) AS similarity
+                   FROM transactions
+                   WHERE user_id = $2
+                     AND embedding IS NOT NULL
+                   ORDER BY embedding <=> google_ml.embedding('text-embedding-005', $1)::vector
+                   LIMIT $3""",
+                q.strip(), int(user["user_id"]), limit,
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Semantic search failed: {e}")
+    results = []
+    for r in rows:
+        d = _serialize_transaction(r)
+        d["similarity"] = float(r["similarity"])
+        results.append(d)
+    return results
 
 
 # --- Budget Routes ---

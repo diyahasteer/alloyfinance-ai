@@ -4,6 +4,7 @@ import { useTransactions } from "./hooks/useTransactions";
 import TransactionForm from "./components/TransactionForm";
 import TransactionTable from "./components/TransactionTable";
 import NL2SQLPanel from "./components/NL2SQLPanel";
+import { searchApi } from "./api/search";
 
 const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -134,6 +135,10 @@ function Dashboard({ auth }) {
   const [tab, setTab] = useState("transactions");
   const [showForm, setShowForm] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState(null);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState("");
 
   const handleCategoryChange = (e) => {
     const val = e.target.value;
@@ -145,6 +150,22 @@ function Dashboard({ auth }) {
   const handleCreate = async (txn) => {
     await createTransaction(txn);
     setShowForm(false);
+  };
+
+  const handleSearch = async (e) => {
+    e?.preventDefault();
+    if (!searchQuery.trim()) return;
+    setSearchLoading(true);
+    setSearchError("");
+    setSearchResults(null);
+    try {
+      const results = await searchApi.search(searchQuery.trim());
+      setSearchResults(results);
+    } catch (err) {
+      setSearchError(err.message);
+    } finally {
+      setSearchLoading(false);
+    }
   };
 
   const filterLabel = () => {
@@ -190,9 +211,50 @@ function Dashboard({ auth }) {
           >
             NL2SQL
           </button>
+          <button
+            className={`btn btn-filter ${tab === "search" ? "active" : ""}`}
+            onClick={() => setTab("search")}
+          >
+            Semantic Search
+          </button>
         </div>
 
         {tab === "nl2sql" && <NL2SQLPanel />}
+
+        {tab === "search" && (
+          <section className="card">
+            <div className="table-header">
+              <h2>Semantic Search</h2>
+            </div>
+            <form onSubmit={handleSearch} style={{ display: "flex", gap: "0.5rem", marginBottom: "0.75rem" }}>
+              <input
+                className="category-select"
+                style={{ flex: 1 }}
+                type="text"
+                placeholder="e.g. coffee and dining out"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") handleSearch(); }}
+              />
+              <button className="btn btn-primary" type="submit" disabled={searchLoading}>
+                {searchLoading ? "Searching…" : "Search"}
+              </button>
+            </form>
+            {searchError && <p className="global-error">{searchError}</p>}
+            {searchResults !== null && (
+              <>
+                <div className="table-header" style={{ marginTop: "0.5rem" }}>
+                  <span className="txn-count">
+                    {searchResults.length === 0
+                      ? "No similar transactions found"
+                      : `Top ${searchResults.length} similar transactions`}
+                  </span>
+                </div>
+                <TransactionTable transactions={searchResults} loading={false} />
+              </>
+            )}
+          </section>
+        )}
 
         {tab === "transactions" && (
           <>
