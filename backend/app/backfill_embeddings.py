@@ -9,7 +9,7 @@ import os
 import asyncpg
 
 DATABASE_URL = os.environ["DATABASE_URL"]
-CONCURRENCY = 10  # number of parallel embedding calls
+CONCURRENCY = 1  # number of parallel embedding calls
 
 
 async def embed_one(pool, txn_id, idx, total, counters):
@@ -35,7 +35,7 @@ async def embed_one(pool, txn_id, idx, total, counters):
 
 
 async def main():
-    pool = await asyncpg.create_pool(DATABASE_URL, ssl=False, min_size=CONCURRENCY, max_size=CONCURRENCY)
+    pool = await asyncpg.create_pool(DATABASE_URL, ssl=False, min_size=1, max_size=CONCURRENCY)
     try:
         async with pool.acquire() as conn:
             ids = await conn.fetch(
