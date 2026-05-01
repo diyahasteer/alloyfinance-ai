@@ -3,6 +3,7 @@ import { useTransactions } from "./hooks/useTransactions";
 import TransactionForm from "./components/TransactionForm";
 import TransactionTable from "./components/TransactionTable";
 import NL2SQLPanel from "./components/NL2SQLPanel";
+import MonthlyReportsPanel from "./components/MonthlyReportsPanel";
 import { searchApi } from "./api/search";
 
 const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
@@ -307,6 +308,12 @@ function Dashboard({ auth }) {
             Transactions
           </button>
           <button
+            className={`btn btn-filter ${tab === "monthly-reports" ? "active" : ""}`}
+            onClick={() => setTab("monthly-reports")}
+          >
+            Monthly Reports
+          </button>
+          <button
             className={`btn btn-filter ${tab === "nl2sql" ? "active" : ""}`}
             onClick={() => setTab("nl2sql")}
           >
@@ -321,6 +328,7 @@ function Dashboard({ auth }) {
         </div>
 
         {tab === "nl2sql" && <NL2SQLPanel userId={auth.user?.id} />}
+        {tab === "monthly-reports" && <MonthlyReportsPanel />}
 
         {tab === "search" && (
           <section className="card">

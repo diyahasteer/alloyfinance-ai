@@ -1,15 +1,17 @@
 import csv
+import json
 import os
 import uuid
 import logging
 from datetime import datetime, timezone, timedelta
 from enum import Enum
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import jwt
 from dotenv import load_dotenv
 import asyncpg
+import requests
 from fastapi import FastAPI, HTTPException, Query, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -62,6 +64,8 @@ if not JWT_SECRET:
     raise ValueError("JWT_SECRET is not set")
 
 DATABASE_SSL_MODE = os.getenv("DATABASE_SSL_MODE", "disable").lower()
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
 
 # JWT configuration for user session tokens.
 JWT_ALGORITHM = "HS256"
@@ -258,6 +262,115 @@ async def startup():
                 category TEXT PRIMARY KEY,
                 amount   NUMERIC(18, 2) NOT NULL
             )
+        """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS monthly_reports (
+                user_id INTEGER NOT NULL,
+                year_month TEXT NOT NULL,
+                total_spent NUMERIC(18, 2) NOT NULL,
+                comments TEXT NOT NULL,
+                suggestions_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+                category_breakdown_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+                merchant_breakdown_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+                generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (user_id, year_month)
+            )
+        """)
+        # Backward-compatible migration for existing environments that already had
+        # a monthly_reports table with an older shape.
+        await conn.execute("""
+            ALTER TABLE monthly_reports
+            ADD COLUMN IF NOT EXISTS total_spent NUMERIC(18, 2)
+        """)
+        await conn.execute("""
+            ALTER TABLE monthly_reports
+            ADD COLUMN IF NOT EXISTS comments TEXT
+        """)
+        await conn.execute("""
+            ALTER TABLE monthly_reports
+            ADD COLUMN IF NOT EXISTS suggestions_json JSONB DEFAULT '[]'::jsonb
+        """)
+        await conn.execute("""
+            ALTER TABLE monthly_reports
+            ADD COLUMN IF NOT EXISTS category_breakdown_json JSONB DEFAULT '[]'::jsonb
+        """)
+        await conn.execute("""
+            ALTER TABLE monthly_reports
+            ADD COLUMN IF NOT EXISTS merchant_breakdown_json JSONB DEFAULT '[]'::jsonb
+        """)
+        await conn.execute("""
+            ALTER TABLE monthly_reports
+            ADD COLUMN IF NOT EXISTS generated_at TIMESTAMPTZ DEFAULT NOW()
+        """)
+        # Legacy monthly report columns from older workflow versions.
+        await conn.execute("""
+            ALTER TABLE monthly_reports
+            ADD COLUMN IF NOT EXISTS summary TEXT
+        """)
+        await conn.execute("""
+            ALTER TABLE monthly_reports
+            ADD COLUMN IF NOT EXISTS highlights JSONB DEFAULT '[]'::jsonb
+        """)
+        await conn.execute("""
+            ALTER TABLE monthly_reports
+            ADD COLUMN IF NOT EXISTS suggestions JSONB DEFAULT '[]'::jsonb
+        """)
+        await conn.execute("""
+            ALTER TABLE monthly_reports
+            ADD COLUMN IF NOT EXISTS totals JSONB DEFAULT '{}'::jsonb
+        """)
+        await conn.execute("""
+            UPDATE monthly_reports
+            SET total_spent = COALESCE(total_spent, 0),
+                suggestions_json = COALESCE(suggestions_json, '[]'::jsonb),
+                category_breakdown_json = COALESCE(category_breakdown_json, '[]'::jsonb),
+                merchant_breakdown_json = COALESCE(merchant_breakdown_json, '[]'::jsonb),
+                summary = COALESCE(summary, comments, 'No monthly commentary available yet.'),
+                comments = COALESCE(comments, summary, 'No monthly commentary available yet.'),
+                highlights = COALESCE(highlights, '[]'::jsonb),
+                suggestions = COALESCE(suggestions, suggestions_json, '[]'::jsonb),
+                totals = COALESCE(totals, '{}'::jsonb),
+                generated_at = COALESCE(generated_at, NOW())
+        """)
+        await conn.execute("""
+            ALTER TABLE monthly_reports
+            ALTER COLUMN total_spent SET NOT NULL
+        """)
+        await conn.execute("""
+            ALTER TABLE monthly_reports
+            ALTER COLUMN comments SET NOT NULL
+        """)
+        await conn.execute("""
+            ALTER TABLE monthly_reports
+            ALTER COLUMN suggestions_json SET NOT NULL
+        """)
+        await conn.execute("""
+            ALTER TABLE monthly_reports
+            ALTER COLUMN category_breakdown_json SET NOT NULL
+        """)
+        await conn.execute("""
+            ALTER TABLE monthly_reports
+            ALTER COLUMN merchant_breakdown_json SET NOT NULL
+        """)
+        await conn.execute("""
+            ALTER TABLE monthly_reports
+            ALTER COLUMN generated_at SET NOT NULL
+        """)
+        await conn.execute("""
+            ALTER TABLE monthly_reports
+            ALTER COLUMN summary SET NOT NULL
+        """)
+        await conn.execute("""
+            ALTER TABLE monthly_reports
+            ALTER COLUMN highlights SET NOT NULL
+        """)
+        await conn.execute("""
+            ALTER TABLE monthly_reports
+            ALTER COLUMN suggestions SET NOT NULL
+        """)
+        await conn.execute("""
+            ALTER TABLE monthly_reports
+            ALTER COLUMN totals SET NOT NULL
         """)
         await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
         await conn.execute("""
@@ -811,3 +924,271 @@ async def fetch_budget_usage():
         }
         for row in rows
     ]
+
+
+# --- Monthly Report Models ---
+
+class MonthlyReportGenerateRequest(BaseModel):
+    year_month: Optional[str] = None
+
+
+def _parse_year_month(value: Optional[str]) -> str:
+    if not value:
+        now = datetime.now(timezone.utc)
+        return f"{now.year:04d}-{now.month:02d}"
+    try:
+        parsed = datetime.strptime(value, "%Y-%m")
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="year_month must be in YYYY-MM format") from exc
+    return f"{parsed.year:04d}-{parsed.month:02d}"
+
+
+def _month_window(year_month: str) -> tuple[datetime, datetime]:
+    start = datetime.strptime(year_month, "%Y-%m").replace(tzinfo=timezone.utc)
+    if start.month == 12:
+        end = start.replace(year=start.year + 1, month=1)
+    else:
+        end = start.replace(month=start.month + 1)
+    return start, end
+
+
+def _build_monthly_fallback(total_spent: float, category_rows: list[dict], merchant_rows: list[dict]) -> tuple[str, list[str]]:
+    if total_spent == 0:
+        return (
+            "No spending transactions were found for this month yet.",
+            [
+                "Add your monthly bills and recurring expenses to get a richer report.",
+                "Set category budgets so next month's report can include over/under analysis.",
+            ],
+        )
+    top_category = category_rows[0]["category"] if category_rows else "miscellaneous"
+    top_merchant = merchant_rows[0]["merchant_name"] if merchant_rows else "your top merchant"
+    comments = (
+        f"You spent ${total_spent:,.2f} this month. "
+        f"Your highest category was {top_category}, and your largest merchant concentration was {top_merchant}. "
+        "Keep tracking category-level trends to spot changes earlier."
+    )
+    suggestions = [
+        f"Set a tighter cap for {top_category} and check progress mid-month.",
+        "Review your top 5 merchants and identify one recurring charge to reduce.",
+        "Move one discretionary purchase per week into savings to improve monthly cushion.",
+    ]
+    return comments, suggestions
+
+
+def _generate_monthly_llm_comments(year_month: str, total_spent: float, category_rows: list[dict], merchant_rows: list[dict]) -> tuple[str, list[str]]:
+    fallback_comments, fallback_suggestions = _build_monthly_fallback(total_spent, category_rows, merchant_rows)
+    if not GEMINI_API_KEY:
+        return fallback_comments, fallback_suggestions
+
+    compact_payload = {
+        "month": year_month,
+        "total_spent_usd": round(total_spent, 2),
+        "top_categories": category_rows[:6],
+        "top_merchants": merchant_rows[:6],
+    }
+    prompt = (
+        "You are a personal finance assistant. "
+        "Given JSON monthly spending data, produce concise report output.\n"
+        "Return ONLY valid JSON with keys:\n"
+        "- comments: string (2-3 sentences, clear and specific)\n"
+        "- suggestions: array of 3 strings with practical savings actions\n"
+        "Rules:\n"
+        "- Use only facts from the JSON.\n"
+        "- Mention exact dollar figures when present.\n"
+        "- Keep tone neutral and helpful.\n"
+        f"Input JSON:\n{compact_payload}"
+    )
+    url = (
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
+    )
+    try:
+        resp = requests.post(
+            url,
+            json={
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "temperature": 0.2,
+                    "responseMimeType": "application/json",
+                },
+            },
+            timeout=40,
+        )
+        resp.raise_for_status()
+        body: dict[str, Any] = resp.json()
+        text = body["candidates"][0]["content"]["parts"][0]["text"]
+        parsed = json.loads(text)
+        comments = str(parsed.get("comments", "")).strip()
+        suggestions = parsed.get("suggestions", [])
+        if not comments or not isinstance(suggestions, list):
+            return fallback_comments, fallback_suggestions
+        suggestions = [str(s).strip() for s in suggestions if str(s).strip()][:3]
+        if len(suggestions) < 3:
+            suggestions.extend(fallback_suggestions[: 3 - len(suggestions)])
+        return comments, suggestions
+    except Exception:
+        logger.exception("Monthly report LLM generation failed")
+        return fallback_comments, fallback_suggestions
+
+
+@app.post("/api/reports/monthly/generate")
+async def generate_monthly_report(
+    body: MonthlyReportGenerateRequest,
+    user: dict = Depends(get_current_user),
+):
+    year_month = _parse_year_month(body.year_month)
+    month_start, month_end = _month_window(year_month)
+    user_id = int(user["user_id"])
+
+    async with pool.acquire() as conn:
+        spend_row = await conn.fetchrow(
+            """SELECT COALESCE(SUM(ABS(amount)), 0) AS total_spent
+               FROM transactions
+               WHERE user_id = $1
+                 AND amount < 0
+                 AND timestamp >= $2
+                 AND timestamp < $3""",
+            user_id, month_start, month_end,
+        )
+        category_rows_raw = await conn.fetch(
+            """SELECT spending_category AS category, COALESCE(SUM(ABS(amount)), 0) AS total_spent
+               FROM transactions
+               WHERE user_id = $1
+                 AND amount < 0
+                 AND timestamp >= $2
+                 AND timestamp < $3
+               GROUP BY spending_category
+               ORDER BY total_spent DESC
+               LIMIT 10""",
+            user_id, month_start, month_end,
+        )
+        merchant_rows_raw = await conn.fetch(
+            """SELECT merchant_name, COALESCE(SUM(ABS(amount)), 0) AS total_spent, COUNT(*) AS transaction_count
+               FROM transactions
+               WHERE user_id = $1
+                 AND amount < 0
+                 AND timestamp >= $2
+                 AND timestamp < $3
+               GROUP BY merchant_name
+               ORDER BY total_spent DESC
+               LIMIT 10""",
+            user_id, month_start, month_end,
+        )
+
+        total_spent = float(spend_row["total_spent"] or 0)
+        category_rows = [
+            {"category": r["category"], "total_spent": float(r["total_spent"])}
+            for r in category_rows_raw
+        ]
+        merchant_rows = [
+            {
+                "merchant_name": r["merchant_name"],
+                "total_spent": float(r["total_spent"]),
+                "transaction_count": int(r["transaction_count"]),
+            }
+            for r in merchant_rows_raw
+        ]
+        comments, suggestions = _generate_monthly_llm_comments(year_month, total_spent, category_rows, merchant_rows)
+
+        totals_payload = {
+            "total_spent": total_spent,
+            "total_income": 0.0,
+            "net_cashflow": -total_spent,
+            "transaction_count": sum(r.get("transaction_count", 0) for r in merchant_rows),
+        }
+
+        await conn.execute(
+            """INSERT INTO monthly_reports (
+                   user_id, year_month, summary, highlights, suggestions, totals,
+                   total_spent, comments, suggestions_json,
+                   category_breakdown_json, merchant_breakdown_json, generated_at
+               ) VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb, $7, $8, $9::jsonb, $10::jsonb, $11::jsonb, NOW())
+               ON CONFLICT (user_id, year_month) DO UPDATE SET
+                   summary = EXCLUDED.summary,
+                   highlights = EXCLUDED.highlights,
+                   suggestions = EXCLUDED.suggestions,
+                   totals = EXCLUDED.totals,
+                   total_spent = EXCLUDED.total_spent,
+                   comments = EXCLUDED.comments,
+                   suggestions_json = EXCLUDED.suggestions_json,
+                   category_breakdown_json = EXCLUDED.category_breakdown_json,
+                   merchant_breakdown_json = EXCLUDED.merchant_breakdown_json,
+                   generated_at = NOW()""",
+            user_id,
+            year_month,
+            comments,
+            json.dumps([]),
+            json.dumps(suggestions),
+            json.dumps(totals_payload),
+            total_spent,
+            comments,
+            json.dumps(suggestions),
+            json.dumps(category_rows),
+            json.dumps(merchant_rows),
+        )
+
+        saved = await conn.fetchrow(
+            """SELECT user_id, year_month, total_spent, comments, suggestions_json,
+                      category_breakdown_json, merchant_breakdown_json, generated_at
+               FROM monthly_reports
+               WHERE user_id = $1 AND year_month = $2""",
+            user_id, year_month,
+        )
+
+    return {
+        "year_month": saved["year_month"],
+        "total_spent": float(saved["total_spent"]),
+        "comments": saved["comments"],
+        "suggestions": saved["suggestions_json"],
+        "category_breakdown": saved["category_breakdown_json"],
+        "merchant_breakdown": saved["merchant_breakdown_json"],
+        "generated_at": saved["generated_at"].isoformat(),
+    }
+
+
+@app.get("/api/reports/monthly")
+async def list_monthly_reports(user: dict = Depends(get_current_user)):
+    user_id = int(user["user_id"])
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """SELECT year_month, total_spent, comments, generated_at
+               FROM monthly_reports
+               WHERE user_id = $1
+               ORDER BY year_month DESC""",
+            user_id,
+        )
+    return [
+        {
+            "year_month": row["year_month"],
+            "total_spent": float(row["total_spent"]),
+            "comments": row["comments"],
+            "generated_at": row["generated_at"].isoformat(),
+        }
+        for row in rows
+    ]
+
+
+@app.get("/api/reports/monthly/{year_month}")
+async def get_monthly_report(year_month: str, user: dict = Depends(get_current_user)):
+    normalized = _parse_year_month(year_month)
+    user_id = int(user["user_id"])
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """SELECT year_month, total_spent, comments, suggestions_json,
+                      category_breakdown_json, merchant_breakdown_json, generated_at
+               FROM monthly_reports
+               WHERE user_id = $1 AND year_month = $2""",
+            user_id, normalized,
+        )
+    if not row:
+        raise HTTPException(status_code=404, detail="Monthly report not found")
+    return {
+        "year_month": row["year_month"],
+        "total_spent": float(row["total_spent"]),
+        "comments": row["comments"],
+        "suggestions": row["suggestions_json"],
+        "category_breakdown": row["category_breakdown_json"],
+        "merchant_breakdown": row["merchant_breakdown_json"],
+        "generated_at": row["generated_at"].isoformat(),
+    }
