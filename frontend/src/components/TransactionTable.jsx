@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 function formatDate(iso) {
   return new Date(iso).toLocaleDateString("en-US", {
     month: "short",
@@ -22,6 +24,20 @@ function formatAmount(amount) {
 
 function categoryBadge(category) {
   return <span className={`badge badge-${category}`}>{category}</span>;
+}
+
+function DescCell({ text }) {
+  const [expanded, setExpanded] = useState(false);
+  if (!text) return <td className="cell-desc">{"\u2014"}</td>;
+  return (
+    <td
+      className={`cell-desc${expanded ? " cell-desc-expanded" : ""}`}
+      onClick={() => setExpanded((e) => !e)}
+      title={expanded ? "Click to collapse" : "Click to expand"}
+    >
+      {text}
+    </td>
+  );
 }
 
 export default function TransactionTable({ transactions, loading }) {
@@ -56,7 +72,7 @@ export default function TransactionTable({ transactions, loading }) {
               <td className="cell-amount">{formatAmount(t.amount)}</td>
               <td className="cell-payment">{t.payment_method.replace(/_/g, " ")}</td>
               <td>{t.city}</td>
-              <td className="cell-desc">{t.description || "\u2014"}</td>
+              <DescCell text={t.description} />
             </tr>
           ))}
         </tbody>
