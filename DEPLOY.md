@@ -181,6 +181,55 @@ Data persists. When you want to bring it back, scale to 2 and re-run step 1.
 
 ---
 
+## GitHub Actions CI/CD
+
+Every push to `main` automatically builds both Docker images, pushes them to GCR, and restarts the GKE deployments.
+
+### One-time GCP setup
+
+```bash
+# Enable Container Registry
+gcloud services enable containerregistry.googleapis.com --project=alloydbbd
+
+# Create a service account for GitHub Actions
+gcloud iam service-accounts create github-actions --project=alloydbbd
+
+# Grant required roles
+gcloud projects add-iam-policy-binding alloydbbd \
+  --member="serviceAccount:github-actions@alloydbbd.iam.gserviceaccount.com" \
+  --role="roles/storage.admin"
+
+gcloud projects add-iam-policy-binding alloydbbd \
+  --member="serviceAccount:github-actions@alloydbbd.iam.gserviceaccount.com" \
+  --role="roles/container.developer"
+
+# Create and download the JSON key
+gcloud iam service-accounts keys create key.json \
+  --iam-account=github-actions@alloydbbd.iam.gserviceaccount.com
+# Paste the contents of key.json as the GCP_SA_KEY GitHub secret, then delete key.json
+rm key.json
+```
+
+### Required GitHub Secrets
+
+Add these in **Settings → Secrets and variables → Actions**:
+
+| Secret | Value |
+|--------|-------|
+| `GCP_SA_KEY` | Contents of the JSON key created above |
+| `BACKEND_EXTERNAL_IP` | Backend LoadBalancer external IP (e.g. `34.68.xxx.xxx`) — run `kubectl get svc backend -n app` to find it |
+| `VITE_GOOGLE_CLIENT_ID` | Your Google OAuth client ID |
+
+### What the workflow does
+
+On every push to `main` (`.github/workflows/deploy.yml`):
+1. Authenticates to GCP using `GCP_SA_KEY`
+2. Builds and pushes `gcr.io/alloydbbd/backend:latest`
+3. Builds and pushes `gcr.io/alloydbbd/frontend:latest` with `VITE_API_URL=http://<BACKEND_EXTERNAL_IP>:8000` baked in
+4. Runs `kubectl rollout restart` on both deployments and waits for them to become ready
+
+---
+
 ## Files reference
 
 | File | Purpose |

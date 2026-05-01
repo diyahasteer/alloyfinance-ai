@@ -39,6 +39,11 @@ spec:
                 secretKeyRef:
                   name: app-secrets
                   key: CORS_ORIGINS
+            - name: DATABASE_SSL_MODE
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: DATABASE_SSL_MODE
 ---
 apiVersion: v1
 kind: Service
