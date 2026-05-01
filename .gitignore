@@ -41,3 +41,4 @@ __pycache__/
 *.secret.yml
 secrets/
 k8s/secrets/
+k8s/secrets.yaml

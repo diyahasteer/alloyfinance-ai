@@ -375,6 +375,16 @@ body { min-height: 100vh; }
   max-width: 180px;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.cell-desc.cell-desc-expanded {
+  max-width: none;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  word-break: break-word;
 }
 
 .amount-neg { color: #dc2626; }
