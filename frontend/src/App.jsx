@@ -1,11 +1,14 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { Routes, Route, Link } from "react-router-dom";
 import { useTransactions } from "./hooks/useTransactions";
 import TransactionForm from "./components/TransactionForm";
 import TransactionTable from "./components/TransactionTable";
 import NL2SQLPanel from "./components/NL2SQLPanel";
+import CustomerPanel from "./components/CustomerPanel";
 import MonthlyReportsPanel from "./components/MonthlyReportsPanel";
 import SemanticClusters from "./components/SemanticClusters";
 import AIAnalysisPanel from "./components/AIAnalysisPanel";
+import PerformanceDashboard from "./components/PerformanceDashboard";
 import { searchApi } from "./api/search";
 import { clustersApi } from "./api/clusters";
 
@@ -136,11 +139,52 @@ export default function App() {
     );
   }
 
-  if (!auth.user) {
-    return <LoginScreen auth={auth} />;
-  }
+  return (
+    <Routes>
+      <Route
+        path="/performance"
+        element={!auth.user ? <LoginScreen auth={auth} /> : <PerformanceLayout auth={auth} />}
+      />
+      <Route
+        path="*"
+        element={!auth.user ? <LoginScreen auth={auth} /> : <Dashboard auth={auth} />}
+      />
+    </Routes>
+  );
+}
 
-  return <Dashboard auth={auth} />;
+function PerformanceLayout({ auth }) {
+  return (
+    <div className="app">
+      <header className="header">
+        <div className="header-row">
+          <div>
+            <h1>AlloyFinance</h1>
+            <p className="header-sub">Performance</p>
+          </div>
+          <div className="user-info">
+            {auth.user.picture && (
+              <img className="avatar" src={auth.user.picture} alt="" referrerPolicy="no-referrer" />
+            )}
+            <span className="user-name">{auth.user.name || auth.user.email}</span>
+            <Link
+              to="/"
+              className="btn btn-filter"
+              style={{ textDecoration: "none", display: "inline-block" }}
+            >
+              Back to app
+            </Link>
+            <button className="btn btn-logout" onClick={auth.logout}>
+              Sign out
+            </button>
+          </div>
+        </div>
+      </header>
+      <main className="main">
+        <PerformanceDashboard />
+      </main>
+    </div>
+  );
 }
 
 function LoginScreen({ auth }) {
@@ -385,6 +429,12 @@ function Dashboard({ auth }) {
             Semantic Search
           </button>
           <button
+            className={`btn btn-filter ${tab === "insight" ? "active" : ""}`}
+            onClick={() => setTab("insight")}
+          >
+            Insight
+          </button>
+          <button
             className={`btn btn-filter ${tab === "semantic-clusters" ? "active" : ""}`}
             onClick={() => setTab("semantic-clusters")}
           >
@@ -398,6 +448,7 @@ function Dashboard({ auth }) {
           </button>
         </div>
 
+        {tab === "insight" && <CustomerPanel />}
         {tab === "nl2sql" && <NL2SQLPanel />}
         {tab === "monthly-reports" && <MonthlyReportsPanel />}
         {tab === "semantic-clusters" && <SemanticClusters />}
