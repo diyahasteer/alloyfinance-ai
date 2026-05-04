@@ -17,7 +17,6 @@ from sklearn.cluster import KMeans
 import jwt
 from dotenv import load_dotenv
 import asyncpg
-import requests
 from fastapi import FastAPI, HTTPException, Query, Depends, Header
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,7 +24,11 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from passlib.context import CryptContext
 
-from app.ai_analysis import generate_fallback_finance_insight, generate_finance_insight_with_gemini
+from app.ai_analysis import (
+    generate_fallback_finance_insight,
+    generate_finance_insight_with_gemini,
+    generate_monthly_report_comments_with_gemini,
+)
 
 load_dotenv()
 
@@ -73,8 +76,6 @@ if not JWT_SECRET:
     raise ValueError("JWT_SECRET is not set")
 
 DATABASE_SSL_MODE = os.getenv("DATABASE_SSL_MODE", "disable").lower()
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
 
 # JWT configuration for user session tokens.
 JWT_ALGORITHM = "HS256"
@@ -1466,52 +1467,13 @@ def _build_monthly_fallback(total_spent: float, category_rows: list[dict], merch
 
 def _generate_monthly_llm_comments(year_month: str, total_spent: float, category_rows: list[dict], merchant_rows: list[dict]) -> tuple[str, list[str]]:
     fallback_comments, fallback_suggestions = _build_monthly_fallback(total_spent, category_rows, merchant_rows)
-    if not GEMINI_API_KEY:
-        return fallback_comments, fallback_suggestions
-
-    compact_payload = {
-        "month": year_month,
-        "total_spent_usd": round(total_spent, 2),
-        "top_categories": category_rows[:6],
-        "top_merchants": merchant_rows[:6],
-    }
-    prompt = (
-        "You are a personal finance assistant. "
-        "Given JSON monthly spending data, produce concise report output.\n"
-        "Return ONLY valid JSON with keys:\n"
-        "- comments: string (2-3 sentences, clear and specific)\n"
-        "- suggestions: array of 3 strings with practical savings actions\n"
-        "Rules:\n"
-        "- Use only facts from the JSON.\n"
-        "- Mention exact dollar figures when present.\n"
-        "- Keep tone neutral and helpful.\n"
-        f"Input JSON:\n{compact_payload}"
-    )
-    url = (
-        "https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
-    )
     try:
-        resp = requests.post(
-            url,
-            json={
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {
-                    "temperature": 0.2,
-                    "responseMimeType": "application/json",
-                },
-            },
-            timeout=40,
+        comments, suggestions = generate_monthly_report_comments_with_gemini(
+            year_month=year_month,
+            total_spent=total_spent,
+            category_rows=category_rows,
+            merchant_rows=merchant_rows,
         )
-        resp.raise_for_status()
-        body: dict[str, Any] = resp.json()
-        text = body["candidates"][0]["content"]["parts"][0]["text"]
-        parsed = json.loads(text)
-        comments = str(parsed.get("comments", "")).strip()
-        suggestions = parsed.get("suggestions", [])
-        if not comments or not isinstance(suggestions, list):
-            return fallback_comments, fallback_suggestions
-        suggestions = [str(s).strip() for s in suggestions if str(s).strip()][:3]
         if len(suggestions) < 3:
             suggestions.extend(fallback_suggestions[: 3 - len(suggestions)])
         return comments, suggestions

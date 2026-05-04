@@ -2,26 +2,36 @@ import json
 import os
 import re
 from typing import Any
-from urllib.parse import urlparse
 
+import google.auth
+from google.auth.transport.requests import Request as GoogleAuthRequest
 import requests
 
 
 DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
 FALLBACK_INSIGHT = "I found the data, but couldn’t generate an AI explanation for it."
 GEMINI_MODEL_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
+GOOGLE_CLOUD_CONFIG_PATTERN = re.compile(r"^[A-Za-z0-9._:-]+$")
+GOOGLE_CLOUD_LOCATION_PATTERN = re.compile(r"^[A-Za-z0-9-]+$")
+VERTEX_AI_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
 
 
-def get_gemini_api_url() -> str:
-    gemini_api_url = os.getenv("GEMINI_API_URL", "").strip()
-    if not gemini_api_url:
-        raise ValueError("GEMINI_API_URL must be set")
-    parsed_url = urlparse(gemini_api_url)
-    if parsed_url.scheme != "https" or not parsed_url.netloc:
-        raise ValueError("GEMINI_API_URL must be an HTTPS URL")
-    if "{model}" not in gemini_api_url:
-        raise ValueError("GEMINI_API_URL must include {model}")
-    return gemini_api_url
+def get_google_cloud_project() -> str:
+    project = os.getenv("GOOGLE_CLOUD_PROJECT", "").strip()
+    if not project:
+        raise ValueError("GOOGLE_CLOUD_PROJECT must be set")
+    if not GOOGLE_CLOUD_CONFIG_PATTERN.fullmatch(project):
+        raise ValueError("GOOGLE_CLOUD_PROJECT contains invalid characters")
+    return project
+
+
+def get_google_cloud_location() -> str:
+    location = os.getenv("GOOGLE_CLOUD_LOCATION", "").strip()
+    if not location:
+        raise ValueError("GOOGLE_CLOUD_LOCATION must be set")
+    if not GOOGLE_CLOUD_LOCATION_PATTERN.fullmatch(location):
+        raise ValueError("GOOGLE_CLOUD_LOCATION contains invalid characters")
+    return location
 
 
 def get_gemini_model() -> str:
@@ -33,6 +43,53 @@ def validate_gemini_model(gemini_model: str) -> str:
     if not GEMINI_MODEL_PATTERN.fullmatch(gemini_model):
         raise ValueError("GEMINI_MODEL contains invalid characters")
     return gemini_model
+
+
+def build_vertex_generate_content_url(*, project: str, location: str, model: str) -> str:
+    return (
+        f"https://{location}-aiplatform.googleapis.com/v1/projects/{project}/locations/{location}"
+        f"/publishers/google/models/{model}:generateContent"
+    )
+
+
+def get_vertex_access_token() -> str:
+    try:
+        credentials, _ = google.auth.default(scopes=[VERTEX_AI_SCOPE])
+        credentials.refresh(GoogleAuthRequest())
+    except Exception as exc:
+        raise RuntimeError("Google ADC credentials not found") from exc
+
+    token = getattr(credentials, "token", None)
+    if not token:
+        raise RuntimeError("Google ADC credentials did not return an access token")
+    return token
+
+
+def post_vertex_generate_content(
+    *,
+    prompt: str,
+    generation_config: dict[str, Any],
+    model: str | None = None,
+    timeout_s: int = 30,
+) -> dict[str, Any]:
+    selected_model = validate_gemini_model(model) if model else get_gemini_model()
+    project = get_google_cloud_project()
+    location = get_google_cloud_location()
+    url = build_vertex_generate_content_url(project=project, location=location, model=selected_model)
+    access_token = get_vertex_access_token()
+    payload: dict[str, Any] = {
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+        "generationConfig": generation_config,
+    }
+
+    response = requests.post(
+        url,
+        headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
+        json=payload,
+        timeout=timeout_s,
+    )
+    response.raise_for_status()
+    return response.json()
 
 
 def format_query_results_for_prompt(columns: list[str], rows: list[list[Any]]) -> str:
@@ -151,6 +208,51 @@ def generate_fallback_finance_insight(
     return FALLBACK_INSIGHT
 
 
+def generate_monthly_report_comments_with_gemini(
+    *,
+    year_month: str,
+    total_spent: float,
+    category_rows: list[dict[str, Any]],
+    merchant_rows: list[dict[str, Any]],
+    model: str | None = None,
+    timeout_s: int = 40,
+) -> tuple[str, list[str]]:
+    compact_payload = {
+        "month": year_month,
+        "total_spent_usd": round(total_spent, 2),
+        "top_categories": category_rows[:6],
+        "top_merchants": merchant_rows[:6],
+    }
+    prompt = (
+        "You are a personal finance assistant. "
+        "Given JSON monthly spending data, produce concise report output.\n"
+        "Return ONLY valid JSON with keys:\n"
+        "- comments: string (2-3 sentences, clear and specific)\n"
+        "- suggestions: array of 3 strings with practical savings actions\n"
+        "Rules:\n"
+        "- Use only facts from the JSON.\n"
+        "- Mention exact dollar figures when present.\n"
+        "- Keep tone neutral and helpful.\n"
+        f"Input JSON:\n{compact_payload}"
+    )
+    body = post_vertex_generate_content(
+        prompt=prompt,
+        generation_config={
+            "temperature": 0.2,
+            "responseMimeType": "application/json",
+        },
+        model=model,
+        timeout_s=timeout_s,
+    )
+    text = body["candidates"][0]["content"]["parts"][0]["text"]
+    parsed = json.loads(text)
+    comments = str(parsed.get("comments", "")).strip()
+    suggestions = parsed.get("suggestions", [])
+    if not comments or not isinstance(suggestions, list):
+        raise ValueError("Monthly report response did not include comments and suggestions")
+    return comments, [str(s).strip() for s in suggestions if str(s).strip()][:3]
+
+
 def generate_finance_insight_with_gemini(
     *,
     user_question: str,
@@ -158,14 +260,11 @@ def generate_finance_insight_with_gemini(
     columns: list[str],
     rows: list[list[Any]],
     supporting_context: list[dict[str, Any]] | None = None,
-    api_key: str | None = None,
     model: str | None = None,
     timeout_s: int = 30,
 ) -> str:
     """Generate a concise natural-language explanation for already-returned SQL results."""
-    resolved_key = api_key if api_key is not None else os.getenv("GEMINI_API_KEY", "")
-    gemini_api_key = resolved_key.strip()
-    if not gemini_api_key:
+    if not rows or not any(value is not None for row in rows for value in row):
         return generate_fallback_finance_insight(
             user_question=user_question,
             columns=columns,
@@ -181,15 +280,12 @@ def generate_finance_insight_with_gemini(
         query_results=query_results,
         supporting_context=supporting_transactions,
     )
-    selected_model = validate_gemini_model(model) if model else get_gemini_model()
-    url = get_gemini_api_url().format(model=selected_model)
-    payload: dict[str, Any] = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {
+    body = post_vertex_generate_content(
+        prompt=prompt,
+        generation_config={
             "temperature": 0.2,
         },
-    }
-
-    response = requests.post(url, headers={"x-goog-api-key": gemini_api_key}, json=payload, timeout=timeout_s)
-    response.raise_for_status()
-    return parse_gemini_text_response(response.json())
+        model=model,
+        timeout_s=timeout_s,
+    )
+    return parse_gemini_text_response(body)
