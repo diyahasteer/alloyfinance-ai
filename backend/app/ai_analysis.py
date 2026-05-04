@@ -1,13 +1,38 @@
 import json
 import os
+import re
 from typing import Any
+from urllib.parse import urlparse
 
 import requests
 
 
-GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
 FALLBACK_INSIGHT = "I found the data, but couldn’t generate an AI explanation for it."
+GEMINI_MODEL_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
+
+
+def get_gemini_api_url() -> str:
+    gemini_api_url = os.getenv("GEMINI_API_URL", "").strip()
+    if not gemini_api_url:
+        raise ValueError("GEMINI_API_URL must be set")
+    parsed_url = urlparse(gemini_api_url)
+    if parsed_url.scheme != "https" or not parsed_url.netloc:
+        raise ValueError("GEMINI_API_URL must be an HTTPS URL")
+    if "{model}" not in gemini_api_url:
+        raise ValueError("GEMINI_API_URL must include {model}")
+    return gemini_api_url
+
+
+def get_gemini_model() -> str:
+    gemini_model = os.getenv("GEMINI_MODEL", DEFAULT_GEMINI_MODEL).strip() or DEFAULT_GEMINI_MODEL
+    return validate_gemini_model(gemini_model)
+
+
+def validate_gemini_model(gemini_model: str) -> str:
+    if not GEMINI_MODEL_PATTERN.fullmatch(gemini_model):
+        raise ValueError("GEMINI_MODEL contains invalid characters")
+    return gemini_model
 
 
 def format_query_results_for_prompt(columns: list[str], rows: list[list[Any]]) -> str:
@@ -134,7 +159,7 @@ def generate_finance_insight_with_gemini(
     rows: list[list[Any]],
     supporting_context: list[dict[str, Any]] | None = None,
     api_key: str | None = None,
-    model: str = GEMINI_MODEL,
+    model: str | None = None,
     timeout_s: int = 30,
 ) -> str:
     """Generate a concise natural-language explanation for already-returned SQL results."""
@@ -156,7 +181,8 @@ def generate_finance_insight_with_gemini(
         query_results=query_results,
         supporting_context=supporting_transactions,
     )
-    url = GEMINI_API_URL.format(model=model)
+    selected_model = validate_gemini_model(model) if model else get_gemini_model()
+    url = get_gemini_api_url().format(model=selected_model)
     payload: dict[str, Any] = {
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {

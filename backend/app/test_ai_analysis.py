@@ -75,7 +75,10 @@ class FinanceInsightPromptTests(unittest.TestCase):
         }
         response.raise_for_status.return_value = None
 
-        with patch("app.ai_analysis.requests.post", return_value=response) as post:
+        with (
+            patch.dict("os.environ", {"GEMINI_API_URL": "https://example.test/models/{model}:generateContent"}),
+            patch("app.ai_analysis.requests.post", return_value=response) as post,
+        ):
             insight = generate_finance_insight_with_gemini(
                 user_question="How much did I spend on dining?",
                 sql_query="SELECT * FROM transactions",
@@ -86,6 +89,139 @@ class FinanceInsightPromptTests(unittest.TestCase):
 
         self.assertEqual(insight, "Dining was the only returned category.")
         self.assertEqual(post.call_args.kwargs["headers"], {"x-goog-api-key": "test-key"})
+
+    def test_generate_finance_insight_uses_gemini_config_from_environment(self):
+        response = Mock()
+        response.json.return_value = {
+            "candidates": [{"content": {"parts": [{"text": "Used environment config."}]}}],
+        }
+        response.raise_for_status.return_value = None
+
+        with (
+            patch.dict(
+                "os.environ",
+                {
+                    "GEMINI_API_URL": "https://example.test/models/{model}:generateContent",
+                    "GEMINI_MODEL": "gemini-env-model",
+                },
+            ),
+            patch("app.ai_analysis.requests.post", return_value=response) as post,
+        ):
+            insight = generate_finance_insight_with_gemini(
+                user_question="How much did I spend on dining?",
+                sql_query="SELECT * FROM transactions",
+                columns=["category"],
+                rows=[["dining"]],
+                api_key="test-key",
+            )
+
+        self.assertEqual(insight, "Used environment config.")
+        self.assertEqual(
+            post.call_args.args[0],
+            "https://example.test/models/gemini-env-model:generateContent",
+        )
+
+    def test_generate_finance_insight_uses_explicit_model_override(self):
+        response = Mock()
+        response.json.return_value = {
+            "candidates": [{"content": {"parts": [{"text": "Used custom model."}]}}],
+        }
+        response.raise_for_status.return_value = None
+
+        with (
+            patch.dict("os.environ", {"GEMINI_API_URL": "https://example.test/models/{model}:generateContent"}),
+            patch("app.ai_analysis.requests.post", return_value=response) as post,
+        ):
+            insight = generate_finance_insight_with_gemini(
+                user_question="How much did I spend on dining?",
+                sql_query="SELECT * FROM transactions",
+                columns=["category"],
+                rows=[["dining"]],
+                api_key="test-key",
+                model="custom-model",
+            )
+
+        self.assertEqual(insight, "Used custom model.")
+        self.assertEqual(
+            post.call_args.args[0],
+            "https://example.test/models/custom-model:generateContent",
+        )
+
+    def test_generate_finance_insight_requires_gemini_api_url_from_environment(self):
+        with patch.dict("os.environ", {"GEMINI_API_URL": ""}):
+            with self.assertRaises(ValueError) as context:
+                generate_finance_insight_with_gemini(
+                    user_question="How much did I spend on dining?",
+                    sql_query="SELECT * FROM transactions",
+                    columns=["category"],
+                    rows=[["dining"]],
+                    api_key="test-key",
+                )
+
+        self.assertEqual(str(context.exception), "GEMINI_API_URL must be set")
+
+    def test_generate_finance_insight_requires_https_gemini_api_url(self):
+        with patch.dict("os.environ", {"GEMINI_API_URL": "http://example.test/models/{model}:generateContent"}):
+            with self.assertRaises(ValueError) as context:
+                generate_finance_insight_with_gemini(
+                    user_question="How much did I spend on dining?",
+                    sql_query="SELECT * FROM transactions",
+                    columns=["category"],
+                    rows=[["dining"]],
+                    api_key="test-key",
+                )
+
+        self.assertEqual(str(context.exception), "GEMINI_API_URL must be an HTTPS URL")
+
+    def test_generate_finance_insight_requires_model_placeholder_in_gemini_api_url(self):
+        with patch.dict("os.environ", {"GEMINI_API_URL": "https://example.test/models/gemini:generateContent"}):
+            with self.assertRaises(ValueError) as context:
+                generate_finance_insight_with_gemini(
+                    user_question="How much did I spend on dining?",
+                    sql_query="SELECT * FROM transactions",
+                    columns=["category"],
+                    rows=[["dining"]],
+                    api_key="test-key",
+                )
+
+        self.assertEqual(str(context.exception), "GEMINI_API_URL must include {model}")
+
+    def test_generate_finance_insight_uses_explicit_model_override(self):
+        response = Mock()
+        response.json.return_value = {
+            "candidates": [{"content": {"parts": [{"text": "Used explicit model."}]}}],
+        }
+        response.raise_for_status.return_value = None
+
+        with (
+            patch.dict("os.environ", {"GEMINI_API_URL": "https://example.test/models/{model}:generateContent"}),
+            patch("app.ai_analysis.requests.post", return_value=response) as post,
+        ):
+            insight = generate_finance_insight_with_gemini(
+                user_question="How much did I spend on dining?",
+                sql_query="SELECT * FROM transactions",
+                columns=["category"],
+                rows=[["dining"]],
+                api_key="test-key",
+                model="custom-model",
+            )
+
+        self.assertEqual(insight, "Used explicit model.")
+        self.assertEqual(post.call_args.args[0], "https://example.test/models/custom-model:generateContent")
+
+    def test_generate_finance_insight_rejects_invalid_model_name(self):
+        with patch.dict("os.environ", {"GEMINI_API_URL": "https://example.test/models/{model}:generateContent"}):
+            with self.assertRaises(ValueError) as context:
+                generate_finance_insight_with_gemini(
+                    user_question="How much did I spend on dining?",
+                    sql_query="SELECT * FROM transactions",
+                    columns=["category"],
+                    rows=[["dining"]],
+                    api_key="test-key",
+                    model="../metadata",
+                )
+
+        self.assertEqual(str(context.exception), "GEMINI_MODEL contains invalid characters")
 
     def test_generate_finance_insight_falls_back_without_api_key(self):
         insight = generate_finance_insight_with_gemini(
