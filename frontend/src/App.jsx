@@ -155,7 +155,7 @@ export default function App() {
 
 function PerformanceLayout({ auth }) {
   return (
-    <div className="app">
+    <div className="app app--wide">
       <header className="header">
         <div className="header-row">
           <div>
@@ -429,10 +429,10 @@ function Dashboard({ auth }) {
             Semantic Search
           </button>
           <button
-            className={`btn btn-filter ${tab === "insight" ? "active" : ""}`}
-            onClick={() => setTab("insight")}
+            className={`btn btn-filter ${tab === "insights" ? "active" : ""}`}
+            onClick={() => setTab("insights")}
           >
-            Insight
+            Insights
           </button>
           <button
             className={`btn btn-filter ${tab === "semantic-clusters" ? "active" : ""}`}
@@ -448,7 +448,7 @@ function Dashboard({ auth }) {
           </button>
         </div>
 
-        {tab === "insight" && <CustomerPanel />}
+        {tab === "insights" && <CustomerPanel />}
         {tab === "nl2sql" && <NL2SQLPanel />}
         {tab === "monthly-reports" && <MonthlyReportsPanel />}
         {tab === "semantic-clusters" && <SemanticClusters />}

@@ -23,6 +23,11 @@ body { min-height: 100vh; }
   padding: 2rem 1.5rem 4rem;
 }
 
+/* Performance dashboard: more chart width on large screens (default .app stays 1100px). */
+.app.app--wide {
+  max-width: min(1400px, calc(100vw - 2.5rem));
+}
+
 .header {
   margin-bottom: 2rem;
 }

@@ -74,6 +74,7 @@ class FinanceInsightPromptTests(unittest.TestCase):
         response.json.return_value = {
             "candidates": [{"content": {"parts": [{"text": "Dining was the only returned category."}]}}],
         }
+        response.content = b'{"candidates":[]}'
         response.raise_for_status.return_value = None
         credentials = Mock()
         credentials.token = "vertex-access-token"
@@ -114,6 +115,7 @@ class FinanceInsightPromptTests(unittest.TestCase):
         response.json.return_value = {
             "candidates": [{"content": {"parts": [{"text": "Used environment config."}]}}],
         }
+        response.content = b"{}"
         response.raise_for_status.return_value = None
         credentials = Mock()
         credentials.token = "vertex-access-token"
@@ -150,6 +152,7 @@ class FinanceInsightPromptTests(unittest.TestCase):
         response.json.return_value = {
             "candidates": [{"content": {"parts": [{"text": "Used custom model."}]}}],
         }
+        response.content = b"{}"
         response.raise_for_status.return_value = None
         credentials = Mock()
         credentials.token = "vertex-access-token"
@@ -269,6 +272,7 @@ class FinanceInsightPromptTests(unittest.TestCase):
                 },
             ],
         }
+        response.content = b'{"candidates":[]}'
         response.raise_for_status.return_value = None
         credentials = Mock()
         credentials.token = "vertex-access-token"
@@ -287,7 +291,7 @@ class FinanceInsightPromptTests(unittest.TestCase):
             patch("app.ai_analysis.GoogleAuthRequest"),
             patch("app.ai_analysis.requests.post", return_value=response) as post,
         ):
-            comments, suggestions = generate_monthly_report_comments_with_gemini(
+            comments, suggestions, response_bytes = generate_monthly_report_comments_with_gemini(
                 year_month="2026-05",
                 total_spent=250.0,
                 category_rows=[{"category": "dining", "total_spent": 150.0}],
@@ -296,6 +300,7 @@ class FinanceInsightPromptTests(unittest.TestCase):
 
         self.assertEqual(comments, "Dining drove most spending.")
         self.assertEqual(suggestions, ["Cook once", "Review subscriptions", "Set a cap"])
+        self.assertEqual(response_bytes, len(response.content))
         self.assertEqual(post.call_args.kwargs["headers"]["Authorization"], "Bearer vertex-access-token")
         self.assertEqual(post.call_args.kwargs["json"]["contents"][0]["role"], "user")
         self.assertEqual(post.call_args.kwargs["json"]["generationConfig"]["responseMimeType"], "application/json")

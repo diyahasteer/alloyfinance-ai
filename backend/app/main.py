@@ -1345,6 +1345,16 @@ async def _execute_select_sql(sql_query: str, user_id: str | None = None) -> dic
     return {"columns": columns, "rows": result_rows, "truncated": truncated}
 
 
+def _pgvector_literal_from_embedding_text(emb: str) -> str:
+    """AlloyDB/google_ml.embedding cast to text often returns Postgres array syntax '{a,b,...}'.
+    pgvector's vector input expects bracket form '[a,b,...]' (see InvalidTextRepresentation).
+    """
+    s = emb.strip()
+    if len(s) >= 2 and s[0] == "{" and s[-1] == "}":
+        return "[" + s[1:-1] + "]"
+    return s
+
+
 async def _semantic_search_core(
     conn: asyncpg.Connection,
     query_text: str,
@@ -1360,7 +1370,7 @@ async def _semantic_search_core(
     emb_ms = monotonic_ms(t_emb)
     if emb_row is None or emb_row["emb"] is None:
         raise ValueError("embedding returned no vector text")
-    emb_text = emb_row["emb"]
+    emb_text = _pgvector_literal_from_embedding_text(emb_row["emb"])
     t_vec = time.perf_counter()
     rows = await conn.fetch(
         """SELECT *,
@@ -1770,7 +1780,7 @@ def _generate_monthly_llm_comments(
     fallback_comments, fallback_suggestions = _build_monthly_fallback(total_spent, category_rows, merchant_rows)
     try:
         t_llm = time.perf_counter()
-        comments, suggestions = generate_monthly_report_comments_with_gemini(
+        comments, suggestions, gem_bytes = generate_monthly_report_comments_with_gemini(
             year_month=year_month,
             total_spent=total_spent,
             category_rows=category_rows,
@@ -1779,7 +1789,7 @@ def _generate_monthly_llm_comments(
         gem_ms = monotonic_ms(t_llm)
         if len(suggestions) < 3:
             suggestions.extend(fallback_suggestions[: 3 - len(suggestions)])
-        return comments, suggestions, gem_ms, None
+        return comments, suggestions, gem_ms, gem_bytes
     except Exception:
         logger.exception("Monthly report LLM generation failed")
         return fallback_comments, fallback_suggestions, None, None
