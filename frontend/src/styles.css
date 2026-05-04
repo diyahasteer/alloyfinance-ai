@@ -758,3 +758,61 @@ body { min-height: 100vh; }
   margin-top: 0.75rem;
   max-width: 380px;
 }
+
+/* ---- AI Analysis ---- */
+
+.analysis-subtitle {
+  color: #64748b;
+  font-size: 0.9rem;
+  margin-top: 0.25rem;
+}
+
+.analysis-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.analysis-submit {
+  align-self: flex-start;
+}
+
+.analysis-error {
+  margin-top: 0.85rem;
+}
+
+.analysis-answer {
+  color: #334155;
+  line-height: 1.6;
+  margin-bottom: 0.9rem;
+}
+
+.analysis-insight {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  margin-bottom: 1rem;
+  padding: 1rem;
+}
+
+.analysis-insight h3 {
+  font-size: 0.95rem;
+  margin-bottom: 0.45rem;
+}
+
+.analysis-insight .analysis-answer {
+  margin-bottom: 0;
+}
+
+.sql-details {
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+}
+
+.sql-details summary {
+  color: #475569;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 0.65rem;
+}

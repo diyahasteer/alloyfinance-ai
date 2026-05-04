@@ -1,6 +1,7 @@
 import csv
 import json
 import os
+import re
 import uuid
 import logging
 from collections import Counter, defaultdict
@@ -16,12 +17,18 @@ from sklearn.cluster import KMeans
 import jwt
 from dotenv import load_dotenv
 import asyncpg
-import requests
 from fastapi import FastAPI, HTTPException, Query, Depends, Header
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from passlib.context import CryptContext
+
+from app.ai_analysis import (
+    generate_fallback_finance_insight,
+    generate_finance_insight_with_gemini,
+    generate_monthly_report_comments_with_gemini,
+)
 
 load_dotenv()
 
@@ -69,8 +76,6 @@ if not JWT_SECRET:
     raise ValueError("JWT_SECRET is not set")
 
 DATABASE_SSL_MODE = os.getenv("DATABASE_SSL_MODE", "disable").lower()
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
 
 # JWT configuration for user session tokens.
 JWT_ALGORITHM = "HS256"
@@ -1139,39 +1144,162 @@ class NL2SQLGenerateRequest(BaseModel):
 class NL2SQLExecuteRequest(BaseModel):
     sql: str
 
+class AIAnalysisNL2SQLRequest(BaseModel):
+    query: str
+
 
 # --- NL2SQL Routes ---
 
-@app.post("/api/nl2sql/generate")
-async def nl2sql_generate(req: NL2SQLGenerateRequest):
-    """Translate a natural language question to SQL using AlloyDB AI NL2SQL."""
-    if not req.question.strip():
+async def _generate_sql_from_question(question: str) -> str:
+    stripped_question = question.strip()
+    if not stripped_question:
         raise HTTPException(status_code=422, detail="question must not be empty")
     async with pool.acquire() as conn:
         try:
             row = await conn.fetchrow(
                 "SELECT alloydb_ai_nl.get_sql($1::text, $2::text, '{}'::json) ->> 'sql' AS sql",
                 "app_config",
-                req.question.strip(),
+                stripped_question,
             )
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"NL2SQL generation failed: {e}")
-    return {"question": req.question, "sql": row["sql"]}
+    sql = row["sql"] if row else None
+    if not sql:
+        raise HTTPException(status_code=422, detail="NL2SQL could not generate a query for this question")
+    return sql
+
+
+def _add_finance_domain_context(question: str) -> str:
+    return (
+        f"{question}. "
+        "Use only these spending_category values when filtering: groceries, dining, shopping, subscriptions, "
+        "utilities, rent, healthcare, transportation, entertainment, income, travel. "
+        "If the user asks about food, treat food as groceries and dining."
+    )
+
+
+def _rewrite_common_category_aliases(sql: str) -> str:
+    food_alias_pattern = re.compile(
+        r"(?:LOWER\(\s*)?spending_category\s*(?:\)\s*)?=\s*'food'",
+        flags=re.IGNORECASE,
+    )
+    return food_alias_pattern.sub("spending_category IN ('groceries', 'dining')", sql)
+
+
+SPENDING_CONTEXT_CATEGORIES = [
+    "groceries",
+    "dining",
+    "shopping",
+    "subscriptions",
+    "utilities",
+    "rent",
+    "healthcare",
+    "transportation",
+    "entertainment",
+    "income",
+    "travel",
+]
+
+
+def _extract_context_categories(question: str, sql: str) -> list[str]:
+    haystack = f"{question} {sql}".lower()
+    categories = [category for category in SPENDING_CONTEXT_CATEGORIES if category in haystack]
+    if "food" in haystack:
+        categories.extend(["groceries", "dining"])
+    return list(dict.fromkeys(categories))
+
+
+def _context_transaction_type(question: str, sql: str) -> str:
+    haystack = f"{question} {sql}".lower()
+    if any(term in haystack for term in ["income", "salary", "payroll", "credit"]):
+        return "credit"
+    return "debit"
+
+
+async def _fetch_supporting_transaction_context(user_id: str, question: str, sql: str, limit: int = 12) -> list[dict]:
+    categories = _extract_context_categories(question, sql)
+    transaction_type = _context_transaction_type(question, sql)
+    category_clause = ""
+    params: list = [int(user_id), transaction_type, limit]
+
+    if categories:
+        category_clause = "AND spending_category = ANY($4::text[])"
+        params.append(categories)
+
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            f"""
+            SELECT
+                timestamp,
+                amount,
+                merchant_name,
+                spending_category,
+                transaction_type,
+                payment_method,
+                city,
+                description
+            FROM transactions
+            WHERE user_id = $1
+              AND transaction_type = $2
+              {category_clause}
+            ORDER BY ABS(amount) DESC, timestamp DESC
+            LIMIT $3
+            """,
+            *params,
+        )
+
+    return [
+        {
+            "timestamp": row["timestamp"].isoformat(),
+            "amount": float(row["amount"]),
+            "merchant_name": row["merchant_name"],
+            "spending_category": row["spending_category"],
+            "transaction_type": row["transaction_type"],
+            "payment_method": row["payment_method"],
+            "city": row["city"],
+            "description": row["description"],
+        }
+        for row in rows
+    ]
+
+
+@app.post("/api/nl2sql/generate")
+async def nl2sql_generate(req: NL2SQLGenerateRequest, user: dict = Depends(get_current_user)):
+    """Translate a natural language question to SQL using AlloyDB AI NL2SQL."""
+    question = req.question.strip()
+    scoped_question = _add_finance_domain_context(f"{question} for user: {user['user_id']}")
+    sql = await _generate_sql_from_question(scoped_question)
+    return {"question": req.question, "sql": _rewrite_common_category_aliases(sql)}
 
 
 ROW_LIMIT = 200
 
-@app.post("/api/nl2sql/execute")
-async def nl2sql_execute(req: NL2SQLExecuteRequest):
-    """Execute a SQL query (SELECT only) and return columns + rows (capped at ROW_LIMIT)."""
-    sql = req.sql.strip().rstrip(";")
+def _scope_transactions_sql(sql: str, user_id: str) -> str:
+    safe_user_id = int(user_id)
+    normalized_sql = re.sub(r"\bpublic\.transactions\b", "transactions", sql, flags=re.IGNORECASE)
+    if re.search(r"^\s*WITH\s+transactions\s+AS\s*\(", normalized_sql, flags=re.IGNORECASE):
+        raise HTTPException(status_code=422, detail="Generated query could not be safely scoped")
+    scoped_transactions_cte = (
+        "WITH transactions AS ("
+        f"SELECT * FROM public.transactions WHERE user_id = {safe_user_id}"
+        ")"
+    )
+    if normalized_sql.lstrip().upper().startswith("WITH "):
+        return re.sub(r"^\s*WITH\s+", f"{scoped_transactions_cte}, ", normalized_sql, count=1, flags=re.IGNORECASE)
+    return f"{scoped_transactions_cte} {normalized_sql}"
+
+
+async def _execute_select_sql(sql_query: str, user_id: str | None = None) -> dict:
+    sql = _rewrite_common_category_aliases(sql_query.strip().rstrip(";"))
     if not sql.upper().startswith("SELECT"):
         raise HTTPException(status_code=422, detail="Only SELECT statements are allowed")
+    executable_sql = _scope_transactions_sql(sql, user_id) if user_id is not None else sql
     async with pool.acquire() as conn:
         try:
-            rows = await conn.fetch(f"SELECT * FROM ({sql}) _q LIMIT {ROW_LIMIT + 1}")
+            rows = await conn.fetch(f"SELECT * FROM ({executable_sql}) _q LIMIT {ROW_LIMIT + 1}")
         except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Query failed: {e}")
+            logger.exception("Scoped SQL query failed")
+            raise HTTPException(status_code=400, detail="Query failed")
     if not rows:
         return {"columns": [], "rows": [], "truncated": False}
     truncated = len(rows) > ROW_LIMIT
@@ -1182,6 +1310,62 @@ async def nl2sql_execute(req: NL2SQLExecuteRequest):
         for row in rows
     ]
     return {"columns": columns, "rows": result_rows, "truncated": truncated}
+
+
+@app.post("/api/nl2sql/execute")
+async def nl2sql_execute(req: NL2SQLExecuteRequest, user: dict = Depends(get_current_user)):
+    """Execute a SQL query (SELECT only) and return columns + rows (capped at ROW_LIMIT)."""
+    return await _execute_select_sql(req.sql, user_id=user["user_id"])
+
+
+@app.post("/api/ai-analysis/nl2sql")
+async def ai_analysis_nl2sql(req: AIAnalysisNL2SQLRequest, user: dict = Depends(get_current_user)):
+    """Run NL2SQL, execute the query, then ask Gemini to explain the returned data."""
+    user_question = req.query.strip()
+    if not user_question:
+        raise HTTPException(status_code=422, detail="query must not be empty")
+
+    scoped_question = _add_finance_domain_context(f"{user_question} for user: {user['user_id']}")
+    sql = await _generate_sql_from_question(scoped_question)
+    sql = _rewrite_common_category_aliases(sql)
+    data = await _execute_select_sql(sql, user_id=user["user_id"])
+    supporting_context = await _fetch_supporting_transaction_context(
+        user_id=user["user_id"],
+        question=user_question,
+        sql=sql,
+    )
+
+    try:
+        insight = await run_in_threadpool(
+            generate_finance_insight_with_gemini,
+            user_question=user_question,
+            sql_query=sql,
+            columns=data["columns"],
+            rows=data["rows"],
+            supporting_context=supporting_context,
+        )
+    except Exception:
+        logger.exception("Gemini insight generation failed")
+        insight = generate_fallback_finance_insight(
+            user_question=user_question,
+            columns=data["columns"],
+            rows=data["rows"],
+            supporting_context=supporting_context,
+        )
+
+    return {
+        "success": True,
+        "method": "nl2sql",
+        "question": user_question,
+        "insight": insight,
+        "answer": insight,
+        "sql": sql,
+        "columns": data["columns"],
+        "rows": data["rows"],
+        "data": data["rows"],
+        "supporting_context": supporting_context,
+        "truncated": data["truncated"],
+    }
 
 
 @app.get("/api/budgets/usage")
@@ -1283,52 +1467,13 @@ def _build_monthly_fallback(total_spent: float, category_rows: list[dict], merch
 
 def _generate_monthly_llm_comments(year_month: str, total_spent: float, category_rows: list[dict], merchant_rows: list[dict]) -> tuple[str, list[str]]:
     fallback_comments, fallback_suggestions = _build_monthly_fallback(total_spent, category_rows, merchant_rows)
-    if not GEMINI_API_KEY:
-        return fallback_comments, fallback_suggestions
-
-    compact_payload = {
-        "month": year_month,
-        "total_spent_usd": round(total_spent, 2),
-        "top_categories": category_rows[:6],
-        "top_merchants": merchant_rows[:6],
-    }
-    prompt = (
-        "You are a personal finance assistant. "
-        "Given JSON monthly spending data, produce concise report output.\n"
-        "Return ONLY valid JSON with keys:\n"
-        "- comments: string (2-3 sentences, clear and specific)\n"
-        "- suggestions: array of 3 strings with practical savings actions\n"
-        "Rules:\n"
-        "- Use only facts from the JSON.\n"
-        "- Mention exact dollar figures when present.\n"
-        "- Keep tone neutral and helpful.\n"
-        f"Input JSON:\n{compact_payload}"
-    )
-    url = (
-        "https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
-    )
     try:
-        resp = requests.post(
-            url,
-            json={
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {
-                    "temperature": 0.2,
-                    "responseMimeType": "application/json",
-                },
-            },
-            timeout=40,
+        comments, suggestions = generate_monthly_report_comments_with_gemini(
+            year_month=year_month,
+            total_spent=total_spent,
+            category_rows=category_rows,
+            merchant_rows=merchant_rows,
         )
-        resp.raise_for_status()
-        body: dict[str, Any] = resp.json()
-        text = body["candidates"][0]["content"]["parts"][0]["text"]
-        parsed = json.loads(text)
-        comments = str(parsed.get("comments", "")).strip()
-        suggestions = parsed.get("suggestions", [])
-        if not comments or not isinstance(suggestions, list):
-            return fallback_comments, fallback_suggestions
-        suggestions = [str(s).strip() for s in suggestions if str(s).strip()][:3]
         if len(suggestions) < 3:
             suggestions.extend(fallback_suggestions[: 3 - len(suggestions)])
         return comments, suggestions

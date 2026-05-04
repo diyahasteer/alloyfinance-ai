@@ -5,6 +5,7 @@ import TransactionTable from "./components/TransactionTable";
 import NL2SQLPanel from "./components/NL2SQLPanel";
 import MonthlyReportsPanel from "./components/MonthlyReportsPanel";
 import SemanticClusters from "./components/SemanticClusters";
+import AIAnalysisPanel from "./components/AIAnalysisPanel";
 import { searchApi } from "./api/search";
 import { clustersApi } from "./api/clusters";
 
@@ -389,9 +390,15 @@ function Dashboard({ auth }) {
           >
             Semantic Clusters
           </button>
+          <button
+            className={`btn btn-filter ${tab === "ai-analysis" ? "active" : ""}`}
+            onClick={() => setTab("ai-analysis")}
+          >
+            AI Analysis
+          </button>
         </div>
 
-        {tab === "nl2sql" && <NL2SQLPanel userId={auth.user?.id} />}
+        {tab === "nl2sql" && <NL2SQLPanel />}
         {tab === "monthly-reports" && <MonthlyReportsPanel />}
         {tab === "semantic-clusters" && <SemanticClusters />}
 
@@ -429,6 +436,7 @@ function Dashboard({ auth }) {
             )}
           </section>
         )}
+        {tab === "ai-analysis" && <AIAnalysisPanel />}
 
         {tab === "transactions" && (
           <>
