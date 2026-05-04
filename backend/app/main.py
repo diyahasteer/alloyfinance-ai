@@ -2,6 +2,7 @@ import csv
 import json
 import os
 import re
+import time
 import uuid
 import logging
 from collections import Counter, defaultdict
@@ -68,6 +69,8 @@ from mcp.constants import (
     SEMANTIC_SEARCH,
 )
 from mcp.tool_router import CustomerToolRouterError, route_user_message
+
+from app.monitoring import metrics_store, monotonic_ms
 
 class COOPMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
@@ -920,25 +923,30 @@ async def search_transactions(
     user: dict = Depends(get_current_user),
 ):
     """Semantic similarity search over the authenticated user's transactions."""
+    t0 = time.perf_counter()
     async with pool.acquire() as conn:
         try:
-            rows = await conn.fetch(
-                """SELECT *,
-                       1 - (embedding <=> google_ml.embedding('text-embedding-005', $1)::vector) AS similarity
-                   FROM transactions
-                   WHERE user_id = $2
-                     AND embedding IS NOT NULL
-                   ORDER BY embedding <=> google_ml.embedding('text-embedding-005', $1)::vector
-                   LIMIT $3""",
-                q.strip(), int(user["user_id"]), limit,
+            rows, emb_ms, vec_ms = await _semantic_search_core(
+                conn, q.strip(), int(user["user_id"]), limit
             )
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Semantic search failed: {e}")
+            raise HTTPException(status_code=500, detail=f"Semantic search failed: {e}") from e
     results = []
     for r in rows:
         d = _serialize_transaction(r)
         d["similarity"] = float(r["similarity"])
         results.append(d)
+    e2e = monotonic_ms(t0)
+    await metrics_store.append(
+        {
+            "tool": "semantic_search",
+            "semantic_embedding_ms": emb_ms,
+            "semantic_vector_search_ms": vec_ms,
+            "semantic_total_ms": emb_ms + vec_ms,
+            "semantic_match_count": len(results),
+            "e2e_total_ms": e2e,
+        }
+    )
     return results
 @app.get("/api/transactions/clusters")
 async def cluster_transactions(
@@ -1279,10 +1287,22 @@ async def _fetch_supporting_transaction_context(user_id: str, question: str, sql
 @app.post("/api/nl2sql/generate")
 async def nl2sql_generate(req: NL2SQLGenerateRequest, user: dict = Depends(get_current_user)):
     """Translate a natural language question to SQL using AlloyDB AI NL2SQL."""
+    t0 = time.perf_counter()
     question = req.question.strip()
     scoped_question = _add_finance_domain_context(f"{question} for user: {user['user_id']}")
     sql = await _generate_sql_from_question(scoped_question)
-    return {"question": req.question, "sql": _rewrite_common_category_aliases(sql)}
+    sql = _rewrite_common_category_aliases(sql)
+    trans_ms = monotonic_ms(t0)
+    e2e = monotonic_ms(t0)
+    await metrics_store.append(
+        {
+            "tool": "nl2sql",
+            "nl2sql_translation_ms": trans_ms,
+            "nl2sql_total_ms": trans_ms,
+            "e2e_total_ms": e2e,
+        }
+    )
+    return {"question": req.question, "sql": sql}
 
 
 ROW_LIMIT = 200
@@ -1325,6 +1345,39 @@ async def _execute_select_sql(sql_query: str, user_id: str | None = None) -> dic
     return {"columns": columns, "rows": result_rows, "truncated": truncated}
 
 
+async def _semantic_search_core(
+    conn: asyncpg.Connection,
+    query_text: str,
+    user_id: int,
+    limit: int,
+) -> tuple[list[asyncpg.Record], float, float]:
+    """Two-step embedding + vector search (text round-trip for asyncpg binding)."""
+    t_emb = time.perf_counter()
+    emb_row = await conn.fetchrow(
+        "SELECT (google_ml.embedding('text-embedding-005', $1::text))::text AS emb",
+        query_text,
+    )
+    emb_ms = monotonic_ms(t_emb)
+    if emb_row is None or emb_row["emb"] is None:
+        raise ValueError("embedding returned no vector text")
+    emb_text = emb_row["emb"]
+    t_vec = time.perf_counter()
+    rows = await conn.fetch(
+        """SELECT *,
+               1 - (embedding <=> $1::text::vector) AS similarity
+           FROM transactions
+           WHERE user_id = $2
+             AND embedding IS NOT NULL
+           ORDER BY embedding <=> $1::text::vector
+           LIMIT $3""",
+        emb_text,
+        user_id,
+        limit,
+    )
+    vec_ms = monotonic_ms(t_vec)
+    return rows, emb_ms, vec_ms
+
+
 # --- Customer tool router (Gemini classifies which app tab / tool to use) ---
 
 
@@ -1358,18 +1411,29 @@ async def customer_route_tool(
             status_code=503,
             detail="GOOGLE_CLOUD_PROJECT is not configured",
         )
+    t_e2e = time.perf_counter()
     try:
+        t_route = time.perf_counter()
         out = route_user_message(
             req.message.strip(),
             project_id=GOOGLE_CLOUD_PROJECT,
             location=GOOGLE_CLOUD_LOCATION,
             model=GEMINI_MODEL,
         )
+        mcp_ms = monotonic_ms(t_route)
     except CustomerToolRouterError as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
     tool = out["tool"]
     if tool not in ROUTER_TOOLS:
         tool = GENERAL
+    e2e = monotonic_ms(t_e2e)
+    await metrics_store.append(
+        {
+            "tool": "routing",
+            "mcp_routing_ms": mcp_ms,
+            "e2e_total_ms": e2e,
+        }
+    )
     return CustomerRouteResponse(tool=tool, reasoning=out.get("reasoning"))
 
 
@@ -1385,13 +1449,16 @@ async def customer_ask(
             status_code=503,
             detail="GOOGLE_CLOUD_PROJECT is not configured",
         )
+    t_e2e = time.perf_counter()
     try:
+        t_route = time.perf_counter()
         out = route_user_message(
             req.message.strip(),
             project_id=GOOGLE_CLOUD_PROJECT,
             location=GOOGLE_CLOUD_LOCATION,
             model=GEMINI_MODEL,
         )
+        mcp_ms = monotonic_ms(t_route)
     except CustomerToolRouterError as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
 
@@ -1404,9 +1471,32 @@ async def customer_ask(
 
     if tool == NL2SQL:
         scoped_question = _add_finance_domain_context(f"{message} for user: {user_id}")
-        sql = await _generate_sql_from_question(scoped_question)
-        sql = _rewrite_common_category_aliases(sql)
-        executed = await _execute_select_sql(sql, user_id=user["user_id"])
+        try:
+            t_tr = time.perf_counter()
+            sql = await _generate_sql_from_question(scoped_question)
+            sql = _rewrite_common_category_aliases(sql)
+            trans_ms = monotonic_ms(t_tr)
+            t_ex = time.perf_counter()
+            executed = await _execute_select_sql(sql, user_id=user["user_id"])
+            ex_ms = monotonic_ms(t_ex)
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        row_count = len(executed.get("rows") or [])
+        e2e = monotonic_ms(t_e2e)
+        await metrics_store.append(
+            {
+                "tool": "e2e",
+                "mcp_routing_ms": mcp_ms,
+                "nl2sql_translation_ms": trans_ms,
+                "nl2sql_execution_ms": ex_ms,
+                "nl2sql_total_ms": trans_ms + ex_ms,
+                "nl2sql_row_count": row_count,
+                "nl2sql_truncated": executed["truncated"],
+                "e2e_total_ms": e2e,
+            }
+        )
         return CustomerAskResponse(
             tool=tool,
             reasoning=out.get("reasoning"),
@@ -1422,17 +1512,7 @@ async def customer_ask(
     if tool == SEMANTIC_SEARCH:
         async with pool.acquire() as conn:
             try:
-                rows = await conn.fetch(
-                    """SELECT *,
-                           1 - (embedding <=> google_ml.embedding('text-embedding-005', $1)::vector) AS similarity
-                       FROM transactions
-                       WHERE user_id = $2
-                         AND embedding IS NOT NULL
-                       ORDER BY embedding <=> google_ml.embedding('text-embedding-005', $1)::vector
-                       LIMIT 10""",
-                    message,
-                    user_id,
-                )
+                rows, emb_ms, vec_ms = await _semantic_search_core(conn, message, user_id, 10)
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"Semantic search failed: {e}") from e
         results = []
@@ -1440,6 +1520,18 @@ async def customer_ask(
             d = _serialize_transaction(r)
             d["similarity"] = float(r["similarity"])
             results.append(d)
+        e2e = monotonic_ms(t_e2e)
+        await metrics_store.append(
+            {
+                "tool": "e2e",
+                "mcp_routing_ms": mcp_ms,
+                "semantic_embedding_ms": emb_ms,
+                "semantic_vector_search_ms": vec_ms,
+                "semantic_total_ms": emb_ms + vec_ms,
+                "semantic_match_count": len(results),
+                "e2e_total_ms": e2e,
+            }
+        )
         return CustomerAskResponse(
             tool=tool,
             reasoning=out.get("reasoning"),
@@ -1447,7 +1539,20 @@ async def customer_ask(
         )
 
     if tool == MONTHLY_REPORTS:
-        report = await generate_monthly_report(MonthlyReportGenerateRequest(year_month=None), user)
+        report, gem_ms, gem_bytes = await _generate_monthly_report_payload(
+            MonthlyReportGenerateRequest(year_month=None), user
+        )
+        e2e = monotonic_ms(t_e2e)
+        rec: dict[str, Any] = {
+            "tool": "e2e",
+            "mcp_routing_ms": mcp_ms,
+            "e2e_total_ms": e2e,
+        }
+        if gem_ms is not None:
+            rec["gemini_call_ms"] = gem_ms
+        if gem_bytes is not None:
+            rec["gemini_response_bytes"] = gem_bytes
+        await metrics_store.append(rec)
         return CustomerAskResponse(
             tool=tool,
             reasoning=out.get("reasoning"),
@@ -1455,6 +1560,14 @@ async def customer_ask(
         )
 
     if tool == CLUSTERING:
+        e2e = monotonic_ms(t_e2e)
+        await metrics_store.append(
+            {
+                "tool": "e2e",
+                "mcp_routing_ms": mcp_ms,
+                "e2e_total_ms": e2e,
+            }
+        )
         return CustomerAskResponse(
             tool=tool,
             reasoning=out.get("reasoning"),
@@ -1464,6 +1577,14 @@ async def customer_ask(
             },
         )
 
+    e2e = monotonic_ms(t_e2e)
+    await metrics_store.append(
+        {
+            "tool": "e2e",
+            "mcp_routing_ms": mcp_ms,
+            "e2e_total_ms": e2e,
+        }
+    )
     return CustomerAskResponse(
         tool=GENERAL,
         reasoning=out.get("reasoning"),
@@ -1476,7 +1597,22 @@ async def customer_ask(
 @app.post("/api/nl2sql/execute")
 async def nl2sql_execute(req: NL2SQLExecuteRequest, user: dict = Depends(get_current_user)):
     """Execute a SQL query (SELECT only) and return columns + rows (capped at ROW_LIMIT)."""
-    return await _execute_select_sql(req.sql, user_id=user["user_id"])
+    t0 = time.perf_counter()
+    out = await _execute_select_sql(req.sql, user_id=user["user_id"])
+    exec_ms = monotonic_ms(t0)
+    e2e = monotonic_ms(t0)
+    row_count = len(out.get("rows") or [])
+    await metrics_store.append(
+        {
+            "tool": "nl2sql",
+            "nl2sql_execution_ms": exec_ms,
+            "nl2sql_total_ms": exec_ms,
+            "nl2sql_row_count": row_count,
+            "nl2sql_truncated": out["truncated"],
+            "e2e_total_ms": e2e,
+        }
+    )
+    return out
 
 
 @app.post("/api/ai-analysis/nl2sql")
@@ -1625,28 +1761,34 @@ def _build_monthly_fallback(total_spent: float, category_rows: list[dict], merch
     return comments, suggestions
 
 
-def _generate_monthly_llm_comments(year_month: str, total_spent: float, category_rows: list[dict], merchant_rows: list[dict]) -> tuple[str, list[str]]:
+def _generate_monthly_llm_comments(
+    year_month: str,
+    total_spent: float,
+    category_rows: list[dict],
+    merchant_rows: list[dict],
+) -> tuple[str, list[str], Optional[float], Optional[int]]:
     fallback_comments, fallback_suggestions = _build_monthly_fallback(total_spent, category_rows, merchant_rows)
     try:
+        t_llm = time.perf_counter()
         comments, suggestions = generate_monthly_report_comments_with_gemini(
             year_month=year_month,
             total_spent=total_spent,
             category_rows=category_rows,
             merchant_rows=merchant_rows,
         )
+        gem_ms = monotonic_ms(t_llm)
         if len(suggestions) < 3:
             suggestions.extend(fallback_suggestions[: 3 - len(suggestions)])
-        return comments, suggestions
+        return comments, suggestions, gem_ms, None
     except Exception:
         logger.exception("Monthly report LLM generation failed")
-        return fallback_comments, fallback_suggestions
+        return fallback_comments, fallback_suggestions, None, None
 
 
-@app.post("/api/reports/monthly/generate")
-async def generate_monthly_report(
+async def _generate_monthly_report_payload(
     body: MonthlyReportGenerateRequest,
-    user: dict = Depends(get_current_user),
-):
+    user: dict,
+) -> tuple[dict[str, Any], Optional[float], Optional[int]]:
     year_month = _parse_year_month(body.year_month)
     month_start, month_end = _month_window(year_month)
     user_id = int(user["user_id"])
@@ -1699,7 +1841,9 @@ async def generate_monthly_report(
             }
             for r in merchant_rows_raw
         ]
-        comments, suggestions = _generate_monthly_llm_comments(year_month, total_spent, category_rows, merchant_rows)
+        comments, suggestions, gem_ms, gem_bytes = _generate_monthly_llm_comments(
+            year_month, total_spent, category_rows, merchant_rows
+        )
 
         totals_payload = {
             "total_spent": total_spent,
@@ -1746,7 +1890,7 @@ async def generate_monthly_report(
             user_id, year_month,
         )
 
-    return {
+    report = {
         "year_month": saved["year_month"],
         "total_spent": float(saved["total_spent"]),
         "comments": saved["comments"],
@@ -1755,6 +1899,43 @@ async def generate_monthly_report(
         "merchant_breakdown": saved["merchant_breakdown_json"],
         "generated_at": saved["generated_at"].isoformat(),
     }
+    return report, gem_ms, gem_bytes
+
+
+@app.post("/api/reports/monthly/generate")
+async def generate_monthly_report(
+    body: MonthlyReportGenerateRequest,
+    user: dict = Depends(get_current_user),
+):
+    t0 = time.perf_counter()
+    report, gem_ms, gem_bytes = await _generate_monthly_report_payload(body, user)
+    e2e = monotonic_ms(t0)
+    rec: dict[str, Any] = {
+        "tool": "e2e",
+        "e2e_total_ms": e2e,
+    }
+    if gem_ms is not None:
+        rec["gemini_call_ms"] = gem_ms
+    if gem_bytes is not None:
+        rec["gemini_response_bytes"] = gem_bytes
+    await metrics_store.append(rec)
+    return report
+
+
+@app.get("/metrics")
+async def get_metrics(user: dict = Depends(get_current_user)):
+    return await metrics_store.get_records()
+
+
+@app.get("/metrics/summary")
+async def get_metrics_summary(user: dict = Depends(get_current_user)):
+    return await metrics_store.summary()
+
+
+@app.delete("/metrics")
+async def clear_metrics(user: dict = Depends(get_current_user)):
+    await metrics_store.clear()
+    return {"status": "ok"}
 
 
 @app.get("/api/reports/monthly")
