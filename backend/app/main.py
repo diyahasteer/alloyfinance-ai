@@ -47,6 +47,16 @@ app.add_middleware(
 
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from mcp.constants import (
+    CLUSTERING,
+    GENERAL,
+    MONTHLY_REPORTS,
+    NL2SQL,
+    ROUTER_TOOLS,
+    SEMANTIC_SEARCH,
+)
+from mcp.tool_router import CustomerToolRouterError, route_user_message
+
 class COOPMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         response = await call_next(request)
@@ -66,6 +76,8 @@ if not JWT_SECRET:
 DATABASE_SSL_MODE = os.getenv("DATABASE_SSL_MODE", "disable").lower()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
+GOOGLE_CLOUD_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT", "").strip()
+GOOGLE_CLOUD_LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1").strip()
 
 # JWT configuration for user session tokens.
 JWT_ALGORITHM = "HS256"
@@ -877,6 +889,152 @@ async def nl2sql_execute(req: NL2SQLExecuteRequest):
         for row in rows
     ]
     return {"columns": columns, "rows": result_rows, "truncated": truncated}
+
+
+# --- Customer tool router (Gemini classifies which app tab / tool to use) ---
+
+
+class CustomerRouteRequest(BaseModel):
+    message: str = Field(..., min_length=1, max_length=4000)
+
+
+class CustomerRouteResponse(BaseModel):
+    tool: str
+    reasoning: Optional[str] = None
+
+
+class CustomerAskResponse(BaseModel):
+    tool: str
+    reasoning: Optional[str] = None
+    result: dict[str, Any] = Field(default_factory=dict)
+
+
+@app.post("/api/customer/route-tool", response_model=CustomerRouteResponse)
+async def customer_route_tool(
+    req: CustomerRouteRequest,
+    user: dict = Depends(get_current_user),
+):
+    """
+    v1: Given a natural-language message, return which product tool best fits.
+    Does not execute NL2SQL, search, etc. — only classification.
+    """
+    logger.debug("customer route-tool for user_id=%s", user.get("user_id"))
+    if not GOOGLE_CLOUD_PROJECT:
+        raise HTTPException(
+            status_code=503,
+            detail="GOOGLE_CLOUD_PROJECT is not configured",
+        )
+    try:
+        out = route_user_message(
+            req.message.strip(),
+            project_id=GOOGLE_CLOUD_PROJECT,
+            location=GOOGLE_CLOUD_LOCATION,
+            model=GEMINI_MODEL,
+        )
+    except CustomerToolRouterError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    tool = out["tool"]
+    if tool not in ROUTER_TOOLS:
+        tool = GENERAL
+    return CustomerRouteResponse(tool=tool, reasoning=out.get("reasoning"))
+
+
+@app.post("/api/customer/ask", response_model=CustomerAskResponse)
+async def customer_ask(
+    req: CustomerRouteRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Route the message and execute the corresponding tool for a single-turn response."""
+    logger.debug("customer ask for user_id=%s", user.get("user_id"))
+    if not GOOGLE_CLOUD_PROJECT:
+        raise HTTPException(
+            status_code=503,
+            detail="GOOGLE_CLOUD_PROJECT is not configured",
+        )
+    try:
+        out = route_user_message(
+            req.message.strip(),
+            project_id=GOOGLE_CLOUD_PROJECT,
+            location=GOOGLE_CLOUD_LOCATION,
+            model=GEMINI_MODEL,
+        )
+    except CustomerToolRouterError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+    tool = out["tool"]
+    if tool not in ROUTER_TOOLS:
+        tool = GENERAL
+
+    user_id = int(user["user_id"])
+    message = req.message.strip()
+
+    if tool == NL2SQL:
+        final_question = f"{message} for user: {user_id}"
+        generated = await nl2sql_generate(NL2SQLGenerateRequest(question=final_question))
+        executed = await nl2sql_execute(NL2SQLExecuteRequest(sql=generated["sql"]))
+        return CustomerAskResponse(
+            tool=tool,
+            reasoning=out.get("reasoning"),
+            result={
+                "question": message,
+                "sql": generated["sql"],
+                "columns": executed["columns"],
+                "rows": executed["rows"],
+                "truncated": executed["truncated"],
+            },
+        )
+
+    if tool == SEMANTIC_SEARCH:
+        async with pool.acquire() as conn:
+            try:
+                rows = await conn.fetch(
+                    """SELECT *,
+                           1 - (embedding <=> google_ml.embedding('text-embedding-005', $1)::vector) AS similarity
+                       FROM transactions
+                       WHERE user_id = $2
+                         AND embedding IS NOT NULL
+                       ORDER BY embedding <=> google_ml.embedding('text-embedding-005', $1)::vector
+                       LIMIT 10""",
+                    message, user_id,
+                )
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Semantic search failed: {e}")
+        results = []
+        for r in rows:
+            d = _serialize_transaction(r)
+            d["similarity"] = float(r["similarity"])
+            results.append(d)
+        return CustomerAskResponse(
+            tool=tool,
+            reasoning=out.get("reasoning"),
+            result={"query": message, "matches": results},
+        )
+
+    if tool == MONTHLY_REPORTS:
+        report = await generate_monthly_report(MonthlyReportGenerateRequest(year_month=None), user)
+        return CustomerAskResponse(
+            tool=tool,
+            reasoning=out.get("reasoning"),
+            result=report,
+        )
+
+    if tool == CLUSTERING:
+        return CustomerAskResponse(
+            tool=tool,
+            reasoning=out.get("reasoning"),
+            result={
+                "status": "not_implemented",
+                "message": "Clustering is not wired yet. Please use the dedicated tab when available.",
+            },
+        )
+
+    return CustomerAskResponse(
+        tool=GENERAL,
+        reasoning=out.get("reasoning"),
+        result={
+            "message": "I can route requests to NL2SQL, semantic search, or monthly reports. Try asking about spending insights."
+        },
+    )
 
 
 @app.get("/api/budgets/usage")

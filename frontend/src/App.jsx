@@ -3,6 +3,7 @@ import { useTransactions } from "./hooks/useTransactions";
 import TransactionForm from "./components/TransactionForm";
 import TransactionTable from "./components/TransactionTable";
 import NL2SQLPanel from "./components/NL2SQLPanel";
+import CustomerPanel from "./components/CustomerPanel";
 import MonthlyReportsPanel from "./components/MonthlyReportsPanel";
 import { searchApi } from "./api/search";
 
@@ -325,8 +326,15 @@ function Dashboard({ auth }) {
           >
             Semantic Search
           </button>
+          <button
+            className={`btn btn-filter ${tab === "customer" ? "active" : ""}`}
+            onClick={() => setTab("customer")}
+          >
+            Customer
+          </button>
         </div>
 
+        {tab === "customer" && <CustomerPanel />}
         {tab === "nl2sql" && <NL2SQLPanel userId={auth.user?.id} />}
         {tab === "monthly-reports" && <MonthlyReportsPanel />}
 
