@@ -2065,9 +2065,9 @@ def _generate_monthly_llm_comments(
     category_rows: list[dict],
     merchant_rows: list[dict],
 ) -> tuple[str, list[str], Optional[float], Optional[int]]:
-    fallback_comments, fallback_suggestions = _build_monthly_fallback(total_spent, category_rows, merchant_rows)
+    fallback_comments, fallback_headline, fallback_suggestions, fallback_watch = _build_monthly_fallback(total_spent, category_rows, merchant_rows)
     if not GOOGLE_CLOUD_PROJECT:
-        return fallback_comments, fallback_suggestions, None, None
+        return fallback_comments, fallback_headline, fallback_suggestions, fallback_watch, None, None
 
     try:
         t_llm = time.perf_counter()
