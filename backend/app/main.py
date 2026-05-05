@@ -957,6 +957,7 @@ async def _fetch_transactions_in_window(conn, user_id: int, start_dt, end_dt):
                       quantity, country, item_description AS description, embedding
                FROM transactions_2
                WHERE user_id = $1 AND embedding IS NOT NULL
+                 AND amount < 10000
                  AND timestamp >= $2 AND timestamp <= $3
                ORDER BY timestamp DESC""",
             user_id, start_dt, end_dt,
@@ -966,7 +967,9 @@ async def _fetch_transactions_in_window(conn, user_id: int, start_dt, end_dt):
             """SELECT transaction_id, timestamp, amount, merchant_name, spending_category,
                       quantity, country, item_description AS description, embedding
                FROM transactions_2
-               WHERE user_id = $1 AND embedding IS NOT NULL AND timestamp >= $2
+               WHERE user_id = $1 AND embedding IS NOT NULL
+                 AND amount < 10000
+                 AND timestamp >= $2
                ORDER BY timestamp DESC""",
             user_id, start_dt,
         )
@@ -976,6 +979,7 @@ async def _fetch_transactions_in_window(conn, user_id: int, start_dt, end_dt):
                       quantity, country, item_description AS description, embedding
                FROM transactions_2
                WHERE user_id = $1 AND embedding IS NOT NULL
+                 AND amount < 10000
                ORDER BY timestamp DESC""",
             user_id,
         )
@@ -1113,6 +1117,7 @@ async def fetch_transactions_by_category(spending_category: str, user: dict = De
                       quantity, country, item_description AS description
                FROM transactions_2
                WHERE user_id = $1 AND LOWER(spending_category) = LOWER($2)
+                 AND amount < 10000
                ORDER BY timestamp DESC""",
             int(user["user_id"]), spending_category,
         )
@@ -1129,6 +1134,7 @@ async def fetch_current_month(user: dict = Depends(get_current_user)):
                       quantity, country, item_description AS description
                FROM transactions_2
                WHERE user_id = $1 AND timestamp >= $2
+                 AND amount < 10000
                ORDER BY timestamp DESC""",
             int(user["user_id"]), month_start,
         )
@@ -1149,6 +1155,7 @@ async def fetch_previous_month(user: dict = Depends(get_current_user)):
                       quantity, country, item_description AS description
                FROM transactions_2
                WHERE user_id = $1 AND timestamp >= $2 AND timestamp < $3
+                 AND amount < 10000
                ORDER BY timestamp DESC""",
             int(user["user_id"]), prev_month_start, current_month_start,
         )
@@ -1163,6 +1170,7 @@ async def fetch_n_transactions(limit: int = Query(default=10, ge=1, le=500), use
                       quantity, country, item_description AS description
                FROM transactions_2
                WHERE user_id = $1
+                 AND amount < 10000
                ORDER BY timestamp DESC
                LIMIT $2""",
             int(user["user_id"]), limit,
@@ -1191,6 +1199,7 @@ async def search_transactions(
                           1 - (embedding <=> $1::vector) AS similarity
                    FROM transactions_2
                    WHERE user_id = $2 AND embedding IS NOT NULL
+                     AND amount < 10000
                    ORDER BY similarity DESC
                    LIMIT $3""",
                 vec_str, int(user["user_id"]), limit,
@@ -1355,6 +1364,7 @@ async def semantic_filter_transactions(
                     FROM transactions_2 t
                     WHERE t.user_id = $1
                       AND t.embedding IS NOT NULL
+                      AND t.amount < 10000
                       AND 1 - (t.embedding <=> $2::vector) >= $3
                       {time_clause}
                     ORDER BY similarity DESC
@@ -1399,6 +1409,7 @@ async def fetch_all_transactions(user: dict = Depends(get_current_user)):
                       quantity, country, item_description AS description
                FROM transactions_2
                WHERE user_id = $1
+                 AND amount < 10000
                ORDER BY timestamp DESC""",
             int(user["user_id"]),
         )
@@ -1529,6 +1540,7 @@ async def _fetch_supporting_transaction_context(user_id: str, question: str, sql
                 item_description
             FROM transactions_2
             WHERE user_id = $1
+              AND amount < 10000
               {category_clause}
             ORDER BY ABS(amount) DESC, timestamp DESC
             LIMIT $2
@@ -1581,7 +1593,7 @@ def _scope_transactions_sql(sql: str, user_id: str) -> str:
         raise HTTPException(status_code=422, detail="Generated query could not be safely scoped")
     scoped_transactions_cte = (
         "WITH transactions_2 AS ("
-        f"SELECT * FROM public.transactions_2 WHERE user_id = {safe_user_id}"
+        f"SELECT * FROM public.transactions_2 WHERE user_id = {safe_user_id} AND amount < 10000"
         ")"
     )
     normalized_sql = re.sub(r"\btransactions\b", "transactions_2", normalized_sql, flags=re.IGNORECASE)
@@ -2014,28 +2026,37 @@ def _month_window(year_month: str) -> tuple[datetime, datetime]:
     return start, end
 
 
-def _build_monthly_fallback(total_spent: float, category_rows: list[dict], merchant_rows: list[dict]) -> tuple[str, list[str]]:
+def _build_monthly_fallback(total_spent: float, category_rows: list[dict], merchant_rows: list[dict]) -> tuple[str, str, list[dict], list[str]]:
     if total_spent == 0:
         return (
             "No spending transactions were found for this month yet.",
+            "No spending data available for this month.",
             [
-                "Add your monthly bills and recurring expenses to get a richer report.",
-                "Set category budgets so next month's report can include over/under analysis.",
+                {"title": "Add transactions", "rationale": "Add your monthly bills and recurring expenses to get a richer report.", "estimated_savings_usd": 0, "difficulty": "Easy", "impact": "High"},
+                {"title": "Set budgets", "rationale": "Set category budgets so next month's report can include over/under analysis.", "estimated_savings_usd": 0, "difficulty": "Easy", "impact": "Medium"},
             ],
+            [],
         )
     top_category = category_rows[0]["category"] if category_rows else "miscellaneous"
+    top_cat_spend = category_rows[0]["total_spent"] if category_rows else 0
     top_merchant = merchant_rows[0]["merchant_name"] if merchant_rows else "your top merchant"
     comments = (
         f"You spent ${total_spent:,.2f} this month. "
-        f"Your highest category was {top_category}, and your largest merchant concentration was {top_merchant}. "
+        f"Your highest category was {top_category} at ${top_cat_spend:,.2f}, and your largest merchant was {top_merchant}. "
         "Keep tracking category-level trends to spot changes earlier."
     )
+    headline = f"{top_category.title()} was your biggest spend at ${top_cat_spend:,.2f} this month."
     suggestions = [
-        f"Set a tighter cap for {top_category} and check progress mid-month.",
-        "Review your top 5 merchants and identify one recurring charge to reduce.",
-        "Move one discretionary purchase per week into savings to improve monthly cushion.",
+        {"title": f"Cap {top_category} spending", "rationale": f"Set a tighter limit for {top_category} and check progress mid-month to avoid overspending.", "estimated_savings_usd": round(top_cat_spend * 0.15, 2), "difficulty": "Medium", "impact": "High"},
+        {"title": "Audit recurring charges", "rationale": f"Review your top merchants including {top_merchant} and identify any subscriptions you no longer use.", "estimated_savings_usd": 20.0, "difficulty": "Easy", "impact": "Medium"},
+        {"title": "Weekly savings transfer", "rationale": "Move one discretionary purchase equivalent per week into savings to build a monthly cushion.", "estimated_savings_usd": 50.0, "difficulty": "Easy", "impact": "Medium"},
     ]
-    return comments, suggestions
+    watch_items = [
+        f"{top_category.title()} accounted for ${top_cat_spend:,.2f} — your largest category this month.",
+    ]
+    if merchant_rows:
+        watch_items.append(f"Top merchant '{top_merchant}' saw ${merchant_rows[0]['total_spent']:,.2f} in charges.")
+    return comments, headline, suggestions, watch_items
 
 
 def _generate_monthly_llm_comments(
@@ -2057,12 +2078,10 @@ def _generate_monthly_llm_comments(
             merchant_rows=merchant_rows,
         )
         gem_ms = monotonic_ms(t_llm)
-        if len(suggestions) < 3:
-            suggestions.extend(fallback_suggestions[: 3 - len(suggestions)])
-        return comments, suggestions, gem_ms, gem_bytes
+        return comments, fallback_headline, suggestions, fallback_watch, gem_ms, gem_bytes
     except Exception:
         logger.exception("Monthly report LLM generation failed")
-        return fallback_comments, fallback_suggestions, None, None
+        return fallback_comments, fallback_headline, fallback_suggestions, fallback_watch, None, None
 
 
 async def _generate_monthly_report_payload(
@@ -2072,58 +2091,42 @@ async def _generate_monthly_report_payload(
     year_month = _parse_year_month(body.year_month)
     month_start, month_end = _month_window(year_month)
     user_id = int(user["user_id"])
-    month_transactions_cte = """
-        WITH month_transactions AS (
-            SELECT DISTINCT ON (transaction_id)
-                transaction_id,
-                user_id,
-                timestamp,
-                amount,
-                merchant_name,
-                spending_category
-            FROM (
-                SELECT transaction_id, user_id, timestamp, amount, merchant_name, spending_category, 1 AS source_rank
-                FROM transactions_2
-                WHERE user_id = $1
-                  AND timestamp >= $2
-                  AND timestamp < $3
-                UNION ALL
-                SELECT transaction_id, user_id, timestamp, amount, merchant_name, spending_category, 2 AS source_rank
-                FROM transactions
-                WHERE user_id = $1
-                  AND timestamp >= $2
-                  AND timestamp < $3
-            ) unioned
-            ORDER BY transaction_id, source_rank
-        )
-    """
 
     async with pool.acquire() as conn:
         spend_row = await conn.fetchrow(
-            month_transactions_cte + """
-            SELECT COALESCE(SUM(ABS(amount)), 0) AS total_spent
-            FROM month_transactions
-            """,
+            """SELECT COALESCE(SUM(amount), 0) AS total_spent
+               FROM transactions_2
+               WHERE user_id = $1
+                 AND amount > 0
+                 AND amount < 10000
+                 AND timestamp >= $2
+                 AND timestamp < $3""",
             user_id, month_start, month_end,
         )
         category_rows_raw = await conn.fetch(
-            month_transactions_cte + """
-            SELECT spending_category AS category, COALESCE(SUM(ABS(amount)), 0) AS total_spent
-            FROM month_transactions
-            GROUP BY spending_category
-            ORDER BY total_spent DESC
-            LIMIT 10
-            """,
+            """SELECT spending_category AS category, COALESCE(SUM(amount), 0) AS total_spent
+               FROM transactions_2
+               WHERE user_id = $1
+                 AND amount > 0
+                 AND amount < 10000
+                 AND timestamp >= $2
+                 AND timestamp < $3
+               GROUP BY spending_category
+               ORDER BY total_spent DESC
+               LIMIT 10""",
             user_id, month_start, month_end,
         )
         merchant_rows_raw = await conn.fetch(
-            month_transactions_cte + """
-            SELECT merchant_name, COALESCE(SUM(ABS(amount)), 0) AS total_spent, COUNT(*) AS transaction_count
-            FROM month_transactions
-            GROUP BY merchant_name
-            ORDER BY total_spent DESC
-            LIMIT 10
-            """,
+            """SELECT merchant_name, COALESCE(SUM(amount), 0) AS total_spent, COUNT(*) AS transaction_count
+               FROM transactions_2
+               WHERE user_id = $1
+                 AND amount > 0
+                 AND amount < 10000
+                 AND timestamp >= $2
+                 AND timestamp < $3
+               GROUP BY merchant_name
+               ORDER BY total_spent DESC
+               LIMIT 10""",
             user_id, month_start, month_end,
         )
 
@@ -2140,7 +2143,7 @@ async def _generate_monthly_report_payload(
             }
             for r in merchant_rows_raw
         ]
-        comments, suggestions, gem_ms, gem_bytes = _generate_monthly_llm_comments(
+        comments, headline, suggestions, watch_items, gem_ms, gem_bytes = _generate_monthly_llm_comments(
             year_month, total_spent, category_rows, merchant_rows
         )
 
@@ -2171,7 +2174,7 @@ async def _generate_monthly_report_payload(
             user_id,
             year_month,
             comments,
-            json.dumps([]),
+            json.dumps(watch_items),
             json.dumps(suggestions),
             json.dumps(totals_payload),
             total_spent,
@@ -2193,7 +2196,9 @@ async def _generate_monthly_report_payload(
         "year_month": saved["year_month"],
         "total_spent": float(saved["total_spent"]),
         "comments": saved["comments"],
+        "headline": headline,
         "suggestions": saved["suggestions_json"],
+        "watch_items": watch_items,
         "category_breakdown": saved["category_breakdown_json"],
         "merchant_breakdown": saved["merchant_breakdown_json"],
         "generated_at": saved["generated_at"].isoformat(),
@@ -2279,7 +2284,7 @@ async def get_monthly_report(year_month: str, user: dict = Depends(get_current_u
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """SELECT year_month, total_spent, comments, suggestions_json,
-                      category_breakdown_json, merchant_breakdown_json, generated_at
+                      category_breakdown_json, merchant_breakdown_json, highlights, generated_at
                FROM monthly_reports
                WHERE user_id = $1 AND year_month = $2""",
             user_id, normalized,
@@ -2291,6 +2296,7 @@ async def get_monthly_report(year_month: str, user: dict = Depends(get_current_u
         "total_spent": float(row["total_spent"]),
         "comments": row["comments"],
         "suggestions": row["suggestions_json"],
+        "watch_items": row["highlights"] or [],
         "category_breakdown": row["category_breakdown_json"],
         "merchant_breakdown": row["merchant_breakdown_json"],
         "generated_at": row["generated_at"].isoformat(),
