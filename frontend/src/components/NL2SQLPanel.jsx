@@ -1,17 +1,18 @@
 import { useState } from "react";
-import { nl2sqlApi } from "../api/nl2sql";
+import { analyzeWithNl2Sql } from "../api/aiAnalysis";
+import NL2SQLResultTable from "./NL2SQLResultTable";
 
 const CHIPS = [
   "Show total spending by category",
-  "Which categories am I over budget on?",
-  "What did I spend at restaurants last month?",
   "Top 5 merchants by total spend",
-  "How much did I spend on groceries this month?",
-  "Show all debit transactions in New York",
-  "Compare my spending to my budget limits",
+  "What did I spend on food last month?",
+  "Show all transactions from United Kingdom",
+  "Which categories have the most transactions?",
+  "What is my average transaction amount by category?",
+  "Show my most expensive purchases",
 ];
 
-export default function NL2SQLPanel({ userId }) {
+export default function NL2SQLPanel() {
   const [question, setQuestion] = useState("");
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -20,15 +21,11 @@ export default function NL2SQLPanel({ userId }) {
   const handleAsk = async () => {
     const q = question.trim();
     if (!q) return;
-    const finalQuery = userId ? `${q} for user: ${userId}` : q;
-    // eslint-disable-next-line no-console
-    console.log("[NL2SQL] original:", q, "| userId:", userId, "| sent:", finalQuery);
     setLoading(true);
     setError("");
     setResult(null);
     try {
-      const generated = await nl2sqlApi.generate(finalQuery);
-      const data = await nl2sqlApi.execute(generated.sql);
+      const data = await analyzeWithNl2Sql(q);
       setResult(data);
     } catch (e) {
       setError(e.message);
@@ -38,10 +35,12 @@ export default function NL2SQLPanel({ userId }) {
   };
 
   const handleKeyDown = (e) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && !loading) {
       handleAsk();
     }
   };
+
+  const resultRowCount = result?.rows?.length || 0;
 
   return (
     <div className="nl-panel">
@@ -90,42 +89,10 @@ export default function NL2SQLPanel({ userId }) {
           <div className="table-header">
             <h2>Results</h2>
             <span className="txn-count">
-              {result.rows.length} row{result.rows.length !== 1 ? "s" : ""}
+              {resultRowCount} row{resultRowCount !== 1 ? "s" : ""}
             </span>
           </div>
-          {result.truncated && (
-            <p className="nl-truncated">Showing first 200 rows — refine your query to see fewer results.</p>
-          )}
-          {result.rows.length === 0 ? (
-            <p className="table-status">No rows returned.</p>
-          ) : (
-            <div className="table-wrap">
-              <table className="txn-table">
-                <thead>
-                  <tr>
-                    {result.columns.map((col) => (
-                      <th key={col}>{col}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {result.rows.map((row, i) => (
-                    <tr key={i}>
-                      {row.map((cell, j) => (
-                        <td key={j}>
-                          {cell === null || cell === undefined ? (
-                            <span className="nl-null">null</span>
-                          ) : (
-                            String(cell)
-                          )}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <NL2SQLResultTable result={result} />
         </section>
       )}
     </div>

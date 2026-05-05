@@ -75,6 +75,7 @@ export default function MonthlyReportsPanel() {
   const [loadingList, setLoadingList] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [loadingReport, setLoadingReport] = useState(false);
+  const [deletingMonth, setDeletingMonth] = useState(null);
   const [error, setError] = useState("");
 
   const selectedSummary = useMemo(() => {
@@ -129,6 +130,24 @@ export default function MonthlyReportsPanel() {
       setSelectedReport(null);
     }
   }, [selectedMonth]);
+
+  const handleDelete = async (month, e) => {
+    e.stopPropagation();
+    setDeletingMonth(month);
+    setError("");
+    try {
+      await monthlyReportsApi.delete(month);
+      if (selectedMonth === month) {
+        setSelectedMonth("");
+        setSelectedReport(null);
+      }
+      await loadReports();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDeletingMonth(null);
+    }
+  };
 
   const handleGenerate = async () => {
     setGenerating(true);
@@ -222,14 +241,25 @@ export default function MonthlyReportsPanel() {
         ) : (
           <div className="reports-list">
             {reports.map((report) => (
-              <button
+              <div
                 key={report.year_month}
                 className={`report-list-item ${selectedMonth === report.year_month ? "active" : ""}`}
                 onClick={() => setSelectedMonth(report.year_month)}
+                style={{ cursor: "pointer" }}
               >
                 <span>{formatMonth(report.year_month)}</span>
-                <span>{formatMoney(report.total_spent)}</span>
-              </button>
+                <span style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                  <span>{formatMoney(report.total_spent)}</span>
+                  <button
+                    className="btn btn-filter"
+                    style={{ fontSize: "0.75rem", padding: "0.25rem 0.6rem", color: "#b91c1c" }}
+                    disabled={deletingMonth === report.year_month}
+                    onClick={(e) => handleDelete(report.year_month, e)}
+                  >
+                    {deletingMonth === report.year_month ? "…" : "Delete"}
+                  </button>
+                </span>
+              </div>
             ))}
           </div>
         )}

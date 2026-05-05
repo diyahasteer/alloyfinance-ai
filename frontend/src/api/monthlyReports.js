@@ -40,4 +40,15 @@ export const monthlyReportsApi = {
     }
     return res.json();
   },
+
+  delete: async (yearMonth) => {
+    const res = await fetch(`${BASE_URL}/api/reports/monthly/${encodeURIComponent(yearMonth)}`, {
+      method: "DELETE",
+      headers: authHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || "Failed to delete report");
+    }
+  },
 };

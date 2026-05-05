@@ -8,10 +8,17 @@ services:
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - JWT_SECRET=${JWT_SECRET}
+      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
+      - GOOGLE_CLOUD_LOCATION=${GOOGLE_CLOUD_LOCATION}
+      - GEMINI_MODEL=${GEMINI_MODEL}
+      - GOOGLE_APPLICATION_CREDENTIALS=/root/.config/gcloud/application_default_credentials.json
+    volumes:
+      - ~/.config/gcloud:/root/.config/gcloud:ro
+      # Persist metrics across container rebuilds (same path as METRICS_PERSIST_PATH default)
+      - ./backend/app/data:/app/app/data
 
   frontend:
     image: node:20-alpine
-    pull_policy: never
     working_dir: /app
     volumes:
       - ./frontend:/app
@@ -24,3 +31,4 @@ services:
     command: sh -c "npm install && npm run dev -- --host"
     depends_on:
       - backend
+

@@ -1,34 +1,21 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { Routes, Route, Link } from "react-router-dom";
 import { useTransactions } from "./hooks/useTransactions";
 import TransactionForm from "./components/TransactionForm";
 import TransactionTable from "./components/TransactionTable";
 import NL2SQLPanel from "./components/NL2SQLPanel";
+import CustomerPanel from "./components/CustomerPanel";
 import MonthlyReportsPanel from "./components/MonthlyReportsPanel";
+import SemanticClusters from "./components/SemanticClusters";
+import AIAnalysisPanel from "./components/AIAnalysisPanel";
+import PerformanceDashboard from "./components/PerformanceDashboard";
 import { searchApi } from "./api/search";
+import { transactionsApi } from "./api/transactions";
+import { catBarColor } from "./utils/categoryColors";
 
 const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
-const CATEGORIES = [
-  "groceries", "dining", "shopping", "subscriptions", "utilities",
-  "rent", "healthcare", "transportation", "entertainment", "income",
-];
-const TRANSACTION_TYPES = ["debit", "credit", "transfer", "refund"];
-const PAYMENT_METHODS = ["credit_card", "debit_card", "bank_transfer", "cash", "mobile_wallet"];
-
-const CAT_COLORS = {
-  groceries:     "#22C55E",
-  dining:        "#F59E0B",
-  shopping:      "#FBBF24",
-  rent:          "#3B5998",
-  entertainment: "#F43F5E",
-  healthcare:    "#14B8A6",
-  subscriptions: "#6366F1",
-  utilities:     "#8B5CF6",
-  transportation:"#0EA5E9",
-  income:        "#10B981",
-};
-
-function catColor(cat) { return CAT_COLORS[cat] || "#94A3B8"; }
+function catColor(cat) { return catBarColor(cat); }
 function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
 function fmt(n) {
   return Math.abs(n).toLocaleString("en-US", { style: "currency", currency: "USD" });
@@ -138,8 +125,52 @@ export default function App() {
     );
   }
 
-  if (!auth.user) return <LoginScreen auth={auth} />;
-  return <Dashboard auth={auth} />;
+  return (
+    <Routes>
+      <Route
+        path="/performance"
+        element={!auth.user ? <LoginScreen auth={auth} /> : <PerformanceLayout auth={auth} />}
+      />
+      <Route
+        path="*"
+        element={!auth.user ? <LoginScreen auth={auth} /> : <Dashboard auth={auth} />}
+      />
+    </Routes>
+  );
+}
+
+function PerformanceLayout({ auth }) {
+  return (
+    <div className="app">
+      <header className="header">
+        <div className="header-row">
+          <div>
+            <h1>AlloyFinance</h1>
+            <p className="header-sub">Performance</p>
+          </div>
+          <div className="user-info">
+            {auth.user.picture && (
+              <img className="avatar" src={auth.user.picture} alt="" referrerPolicy="no-referrer" />
+            )}
+            <span className="user-name">{auth.user.name || auth.user.email}</span>
+            <Link
+              to="/"
+              className="btn btn-filter"
+              style={{ textDecoration: "none", display: "inline-block" }}
+            >
+              Back to app
+            </Link>
+            <button className="btn btn-logout" onClick={auth.logout}>
+              Sign out
+            </button>
+          </div>
+        </div>
+      </header>
+      <main className="main">
+        <PerformanceDashboard />
+      </main>
+    </div>
+  );
 }
 
 function LoginScreen({ auth }) {
@@ -225,12 +256,16 @@ function Dashboard({ auth }) {
   const [tab, setTab] = useState("transactions");
   const [showForm, setShowForm] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState("");
+  const [categories, setCategories] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState(null);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState("");
-  const [typeFilter, setTypeFilter] = useState("");
-  const [paymentFilter, setPaymentFilter] = useState("");
+  const [searchPage, setSearchPage] = useState(0);
+
+  useEffect(() => {
+    transactionsApi.getCategories().then(setCategories).catch(() => {});
+  }, []);
 
   const handleCategoryChange = (e) => {
     const val = e.target.value;
@@ -244,33 +279,27 @@ function Dashboard({ auth }) {
     if (activeFilter !== "all-time") return transactions;
     return transactions.filter((t) => {
       if (categoryFilter && t.spending_category !== categoryFilter) return false;
-      if (typeFilter && t.transaction_type !== typeFilter) return false;
-      if (paymentFilter && t.payment_method !== paymentFilter) return false;
       return true;
     });
-  }, [activeFilter, transactions, categoryFilter, typeFilter, paymentFilter]);
+  }, [activeFilter, transactions, categoryFilter]);
 
   const stats = useMemo(() => {
-    const income = filteredTransactions
-      .filter((t) => parseFloat(t.amount) > 0)
-      .reduce((s, t) => s + parseFloat(t.amount), 0);
     const expenses = filteredTransactions
-      .filter((t) => parseFloat(t.amount) < 0)
-      .reduce((s, t) => s + Math.abs(parseFloat(t.amount)), 0);
-    return { income, expenses, remaining: income - expenses };
+      .reduce((s, t) => s + parseFloat(t.amount), 0);
+    return { expenses };
   }, [filteredTransactions]);
 
   const categorySpending = useMemo(() => {
     const map = {};
-    filteredTransactions.forEach((t) => {
+    transactions.forEach((t) => {
       const amt = parseFloat(t.amount);
-      if (amt < 0) {
+      if (amt > 0) {
         const cat = t.spending_category || "other";
-        map[cat] = (map[cat] || 0) + Math.abs(amt);
+        map[cat] = (map[cat] || 0) + amt;
       }
     });
     return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 7);
-  }, [filteredTransactions]);
+  }, [transactions]);
 
   const handleCreate = async (txn) => {
     await createTransaction(txn);
@@ -283,6 +312,7 @@ function Dashboard({ auth }) {
     setSearchLoading(true);
     setSearchError("");
     setSearchResults(null);
+    setSearchPage(0);
     try {
       const results = await searchApi.search(searchQuery.trim());
       setSearchResults(results);
@@ -302,21 +332,7 @@ function Dashboard({ auth }) {
     return "Transactions";
   };
 
-  const chartTitle = () => {
-    if (activeFilter === "recent") return "Recent Spending by Category";
-    if (activeFilter === "current-month") return "This Month's Spending";
-    if (activeFilter === "previous-month") return "Last Month's Spending";
-    if (activeFilter === "all-time") return "All Time Spending";
-    return "Spending by Category";
-  };
 
-  const periodLabel = () => {
-    if (activeFilter === "recent") return "Recent transactions";
-    if (activeFilter === "current-month") return "This month only";
-    if (activeFilter === "previous-month") return "Last month only";
-    if (activeFilter === "all-time") return "All time total";
-    return "Selected period";
-  };
 
   return (
     <div className="app-shell">
@@ -330,6 +346,7 @@ function Dashboard({ auth }) {
               ["monthly-reports", "Monthly Reports"],
               ["nl2sql", "NL2SQL"],
               ["search", "Semantic Search"],
+              ["semantic-clusters", "Semantic Clusters"],
             ].map(([t, label]) => (
               <button
                 key={t}
@@ -366,7 +383,7 @@ function Dashboard({ auth }) {
         <div className="modal-overlay" onClick={() => setShowForm(false)}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
             <button className="modal-close" onClick={() => setShowForm(false)} aria-label="Close">✕</button>
-            <TransactionForm onSubmit={handleCreate} />
+            <TransactionForm onSubmit={handleCreate} categories={categories} />
           </div>
         </div>
       )}
@@ -375,12 +392,12 @@ function Dashboard({ auth }) {
       <div className="page-wrap">
         {tab === "transactions" && (
           <>
-            {/* Spending chart — updates per active filter */}
+            {/* Spending chart — always shows recent transactions */}
             {categorySpending.length > 0 && (
               <div className="card">
                 <div className="table-header">
                   <div>
-                    <h2>{chartTitle()}</h2>
+                    <h2>Recent Spending by Category</h2>
                     <p className="chart-total">{fmt(stats.expenses)} total · {categorySpending.length} categories</p>
                   </div>
                   <span className="stat-value expenses-val">{fmt(stats.expenses)}</span>
@@ -393,45 +410,37 @@ function Dashboard({ auth }) {
             <section className="controls">
               <div className="filter-group">
                 <button
-                  className={`btn btn-filter${activeFilter === "recent" ? " active" : ""}`}
-                  onClick={() => { setCategoryFilter(""); setTypeFilter(""); setPaymentFilter(""); fetchRecent(); }}
+                  className={`btn btn-filter ${activeFilter === "recent" ? "active" : ""}`}
+                  onClick={() => { setCategoryFilter(""); fetchRecent(); }}
                 >
                   Recent
                 </button>
                 <button
-                  className={`btn btn-filter${activeFilter === "all-time" ? " active" : ""}`}
-                  onClick={() => { setCategoryFilter(""); setTypeFilter(""); setPaymentFilter(""); fetchAll(); }}
+                  className={`btn btn-filter ${activeFilter === "all-time" ? "active" : ""}`}
+                  onClick={() => { setCategoryFilter(""); fetchAll(); }}
                 >
                   All Time
                 </button>
                 <button
-                  className={`btn btn-filter${activeFilter === "current-month" ? " active" : ""}`}
-                  onClick={() => { setCategoryFilter(""); setTypeFilter(""); setPaymentFilter(""); fetchCurrentMonth(); }}
+                  className={`btn btn-filter ${activeFilter === "current-month" ? "active" : ""}`}
+                  onClick={() => { setCategoryFilter(""); fetchCurrentMonth(); }}
                 >
                   This Month
                 </button>
                 <button
-                  className={`btn btn-filter${activeFilter === "previous-month" ? " active" : ""}`}
-                  onClick={() => { setCategoryFilter(""); setTypeFilter(""); setPaymentFilter(""); fetchPreviousMonth(); }}
+                  className={`btn btn-filter ${activeFilter === "previous-month" ? "active" : ""}`}
+                  onClick={() => { setCategoryFilter(""); fetchPreviousMonth(); }}
                 >
                   Last Month
                 </button>
                 <select className="category-select" value={categoryFilter} onChange={handleCategoryChange}>
                   <option value="">All Categories</option>
-                  {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                  {categories.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
                 </select>
-                {activeFilter === "all-time" && (
-                  <>
-                    <select className="category-select" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
-                      <option value="">All Types</option>
-                      {TRANSACTION_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                    <select className="category-select" value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value)}>
-                      <option value="">All Payments</option>
-                      {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m.replace(/_/g, " ")}</option>)}
-                    </select>
-                  </>
-                )}
               </div>
             </section>
 
@@ -444,12 +453,16 @@ function Dashboard({ auth }) {
               </div>
               <TransactionTable transactions={filteredTransactions} loading={loading} />
             </section>
+
           </>
         )}
 
         <main className="main">
           {tab === "nl2sql" && <NL2SQLPanel userId={auth.user?.id} />}
           {tab === "monthly-reports" && <MonthlyReportsPanel />}
+          {tab === "insight" && <CustomerPanel />}
+          {tab === "semantic-clusters" && <SemanticClusters />}
+          {tab === "ai-analysis" && <AIAnalysisPanel />}
 
           {tab === "search" && (
             <section className="card">
@@ -461,7 +474,7 @@ function Dashboard({ auth }) {
                   className="category-select"
                   style={{ flex: 1 }}
                   type="text"
-                  placeholder="e.g. coffee and dining out"
+                  placeholder="e.g. kitchen items and gifts"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") handleSearch(); }}
@@ -471,18 +484,47 @@ function Dashboard({ auth }) {
                 </button>
               </form>
               {searchError && <p className="global-error">{searchError}</p>}
-              {searchResults !== null && (
-                <>
-                  <div className="table-header" style={{ marginTop: "0.5rem" }}>
-                    <span className="txn-count">
-                      {searchResults.length === 0
-                        ? "No similar transactions found"
-                        : `Top ${searchResults.length} similar transactions`}
-                    </span>
-                  </div>
-                  <TransactionTable transactions={searchResults} loading={false} />
-                </>
-              )}
+              {searchResults !== null && (() => {
+                const PAGE_SIZE = 10;
+                const totalPages = Math.ceil(searchResults.length / PAGE_SIZE);
+                const pageSlice = searchResults.slice(searchPage * PAGE_SIZE, (searchPage + 1) * PAGE_SIZE);
+                return (
+                  <>
+                    <div className="table-header" style={{ marginTop: "0.5rem" }}>
+                      <span className="txn-count">
+                        {searchResults.length === 0
+                          ? "No similar transactions found"
+                          : `${searchResults.length} similar transaction${searchResults.length !== 1 ? "s" : ""}`}
+                      </span>
+                      {totalPages > 1 && (
+                        <span style={{ fontSize: "0.82rem", color: "#64748b" }}>
+                          Page {searchPage + 1} of {totalPages}
+                        </span>
+                      )}
+                    </div>
+                    <TransactionTable transactions={pageSlice} loading={false} />
+                    {totalPages > 1 && (
+                      <div className="pagination-row">
+                        <button
+                          className="btn btn-filter"
+                          onClick={() => setSearchPage((p) => p - 1)}
+                          disabled={searchPage === 0}
+                        >
+                          ← Prev
+                        </button>
+                        <span className="pagination-info">{searchPage + 1} / {totalPages}</span>
+                        <button
+                          className="btn btn-filter"
+                          onClick={() => setSearchPage((p) => p + 1)}
+                          disabled={searchPage >= totalPages - 1}
+                        >
+                          Next →
+                        </button>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </section>
           )}
         </main>
