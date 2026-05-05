@@ -276,6 +276,12 @@ body { background: var(--bg); min-height: 100vh; color: var(--text); }
   box-shadow: var(--shadow);
 }
 
+.chart-total {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 0.2rem;
+}
+
 .stat-icon {
   width: 48px;
   height: 48px;
@@ -911,4 +917,48 @@ body { background: var(--bg); min-height: 100vh; color: var(--text); }
   border-radius: 9px;
   padding: 0.65rem 0.75rem;
   background: #fff;
+}
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.modal-card {
+  background: #fff;
+  border-radius: 14px;
+  padding: 2rem;
+  width: 100%;
+  max-width: 640px;
+  max-height: 90vh;
+  overflow-y: auto;
+  position: relative;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+}
+
+.modal-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background: none;
+  border: none;
+  font-size: 1.1rem;
+  color: #64748b;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0.25rem 0.4rem;
+  border-radius: 6px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.modal-close:hover {
+  background: #f1f5f9;
+  color: #1e293b;
 }

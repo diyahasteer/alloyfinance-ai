@@ -355,62 +355,35 @@ function Dashboard({ auth }) {
         <h1 className="hero-title">My Budget Dashboard</h1>
         <p className="hero-sub">Tracking your income, spending, and savings</p>
         {tab === "transactions" && (
-          <button className="btn-hero" onClick={() => setShowForm((s) => !s)}>
-            {showForm ? "✕ Cancel" : "+ New Transaction"}
+          <button className="btn-hero" onClick={() => setShowForm(true)}>
+            + New Transaction
           </button>
         )}
       </div>
+
+      {/* New Transaction Modal */}
+      {showForm && (
+        <div className="modal-overlay" onClick={() => setShowForm(false)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <button className="modal-close" onClick={() => setShowForm(false)} aria-label="Close">✕</button>
+            <TransactionForm onSubmit={handleCreate} />
+          </div>
+        </div>
+      )}
 
       {/* Page content */}
       <div className="page-wrap">
         {tab === "transactions" && (
           <>
-            {/* Stat cards */}
-            <div className="stat-cards">
-              <div className="stat-card">
-                <div className="stat-icon stat-icon-income">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="12" y1="19" x2="12" y2="5" /><polyline points="5 12 12 5 19 12" />
-                  </svg>
-                </div>
-                <div>
-                  <p className="stat-label">Income</p>
-                  <p className="stat-value income-val">{fmt(stats.income)}</p>
-                  <p className="stat-period">{periodLabel()}</p>
-                </div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-icon stat-icon-expenses">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#DC2626" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="12" y1="5" x2="12" y2="19" /><polyline points="19 12 12 19 5 12" />
-                  </svg>
-                </div>
-                <div>
-                  <p className="stat-label">Expenses</p>
-                  <p className="stat-value expenses-val">{fmt(stats.expenses)}</p>
-                  <p className="stat-period">{periodLabel()}</p>
-                </div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-icon stat-icon-remaining">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#4F46E5" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-                  </svg>
-                </div>
-                <div>
-                  <p className="stat-label">Net Balance</p>
-                  <p className="stat-value remaining-val">{fmt(stats.remaining)}</p>
-                  <p className="stat-period">{periodLabel()}</p>
-                </div>
-              </div>
-            </div>
-
             {/* Spending chart — updates per active filter */}
             {categorySpending.length > 0 && (
               <div className="card">
                 <div className="table-header">
-                  <h2>{chartTitle()}</h2>
-                  <span className="txn-count">{categorySpending.length} categories</span>
+                  <div>
+                    <h2>{chartTitle()}</h2>
+                    <p className="chart-total">{fmt(stats.expenses)} total · {categorySpending.length} categories</p>
+                  </div>
+                  <span className="stat-value expenses-val">{fmt(stats.expenses)}</span>
                 </div>
                 <SpendingChart data={categorySpending} />
               </div>
@@ -461,12 +434,6 @@ function Dashboard({ auth }) {
                 )}
               </div>
             </section>
-
-            {showForm && (
-              <section className="card">
-                <TransactionForm onSubmit={handleCreate} />
-              </section>
-            )}
 
             {error && <p className="global-error">{error}</p>}
 
