@@ -1653,9 +1653,9 @@ async def _semantic_search_core(
     emb_text = _pgvector_literal_from_embedding_text(emb_row["emb"])
     t_vec = time.perf_counter()
     rows = await conn.fetch(
-        """SELECT *,
+        """SELECT *, item_description AS description,
                1 - (embedding <=> $1::text::vector) AS similarity
-           FROM transactions
+           FROM transactions_2
            WHERE user_id = $2
              AND embedding IS NOT NULL
            ORDER BY embedding <=> $1::text::vector
