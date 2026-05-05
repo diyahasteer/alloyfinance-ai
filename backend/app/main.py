@@ -1473,8 +1473,8 @@ async def _generate_sql_from_question(question: str) -> str:
     async with pool.acquire() as conn:
         try:
             row = await conn.fetchrow(
-                "SELECT alloydb_ai_nl.get_sql($1::text, $2::text, '{}'::json) ->> 'sql' AS sql",
-                "app_config_v2",
+                "SELECT alloydb_ai_nl.get_sql($1::text, $2::text) ->> 'sql' AS sql",
+                "transactions_2_config",
                 stripped_question,
             )
         except Exception as e:
