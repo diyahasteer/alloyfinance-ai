@@ -1,6 +1,11 @@
 import { useState } from "react";
+import ReactMarkdown from "react-markdown";
 import { analyzeWithNl2Sql } from "../api/aiAnalysis";
 import NL2SQLResultTable from "./NL2SQLResultTable";
+
+function stripJsonBlocks(text) {
+  return text.replace(/```json[\s\S]*?```/gi, "").replace(/```[\s\S]*?```/g, "").trim();
+}
 
 const CHIPS = [
   "Show total spending by category",
@@ -28,7 +33,8 @@ export default function NL2SQLPanel() {
       const data = await analyzeWithNl2Sql(q);
       setResult(data);
     } catch (e) {
-      setError(e.message);
+      console.error("[NL2SQL] insight generation failed", e);
+      setError("I couldn't analyze that question. Try making it more specific, such as asking about spending, categories, merchants, budgets, or time periods.");
     } finally {
       setLoading(false);
     }
@@ -93,6 +99,20 @@ export default function NL2SQLPanel() {
               {result?.truncated ? " (truncated)" : ""}
             </span>
           </div>
+          {(result.answer || result.insight) && (
+            <div className="analysis-insight">
+              <h3>Gemini Insight</h3>
+              <div className="analysis-answer markdown-body">
+                <ReactMarkdown>{stripJsonBlocks(result.answer || result.insight)}</ReactMarkdown>
+              </div>
+            </div>
+          )}
+          {result.sql && (
+            <details className="sql-details">
+              <summary>Generated SQL</summary>
+              <pre className="sql-block">{result.sql}</pre>
+            </details>
+          )}
           <NL2SQLResultTable key={resultRowCount} result={result} />
         </section>
       )}

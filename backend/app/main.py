@@ -33,6 +33,7 @@ from app.ai_analysis import (
     generate_fallback_finance_insight,
     generate_finance_insight_with_gemini,
     generate_monthly_report_comments_with_gemini,
+    post_vertex_generate_content,
 )
 
 load_dotenv()
@@ -94,7 +95,7 @@ if not JWT_SECRET:
 
 DATABASE_SSL_MODE = os.getenv("DATABASE_SSL_MODE", "disable").lower()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash").strip()
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "").strip() or "gemini-2.0-flash"
 GOOGLE_CLOUD_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT", "").strip()
 GOOGLE_CLOUD_LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1").strip()
 
@@ -700,20 +701,58 @@ _gemini_label_cache: dict[str, list[str]] = {}
 
 
 def _gemini_post(prompt: str, temperature: float = 0.3) -> str:
-    """POST to Gemini and return the text response. Retries up to 3x on 429."""
+    """POST to Vertex Gemini and return the text response. Retries up to 3x on 429/503."""
+    if not GOOGLE_CLOUD_PROJECT:
+        raise RuntimeError("GOOGLE_CLOUD_PROJECT is not configured for Vertex Gemini")
+    for attempt in range(3):
+        try:
+            body, _response_bytes = post_vertex_generate_content(
+                prompt=prompt,
+                generation_config={
+                    "temperature": temperature,
+                    "responseMimeType": "application/json",
+                },
+                model=GEMINI_MODEL,
+                timeout_s=30,
+            )
+            return body["candidates"][0]["content"]["parts"][0]["text"]
+        except requests.HTTPError as exc:
+            status_code = exc.response.status_code if exc.response is not None else None
+            if status_code not in {429, 503}:
+                raise
+            wait = 2 ** attempt  # 1s, 2s, 4s
+            logger.warning("Vertex Gemini %s rate limit, retrying in %ds (attempt %d/3)", status_code, wait, attempt + 1)
+            time.sleep(wait)
+            continue
+        raise
+    raise RuntimeError("Vertex Gemini retries exhausted")
+
+
+def _vertex_gemini_post(prompt: str, temperature: float = 0.3) -> str:
+    """Call Gemini via Vertex AI using ADC and return response text."""
+    if not GOOGLE_CLOUD_PROJECT:
+        raise ValueError("GOOGLE_CLOUD_PROJECT is not configured")
     url = (
-        "https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
+        f"https://{GOOGLE_CLOUD_LOCATION}-aiplatform.googleapis.com/v1/projects/{GOOGLE_CLOUD_PROJECT}"
+        f"/locations/{GOOGLE_CLOUD_LOCATION}/publishers/google/models/{GEMINI_MODEL}:generateContent"
     )
     body = {
-        "contents": [{"parts": [{"text": prompt}]}],
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
         "generationConfig": {"temperature": temperature, "responseMimeType": "application/json"},
     }
     for attempt in range(3):
-        resp = requests.post(url, json=body, timeout=30)
-        if resp.status_code == 429:
+        resp = requests.post(
+            url,
+            json=body,
+            headers={
+                "Authorization": f"Bearer {_get_access_token()}",
+                "Content-Type": "application/json",
+            },
+            timeout=30,
+        )
+        if resp.status_code in (429, 503):
             wait = 2 ** attempt  # 1s, 2s, 4s
-            logger.warning("Gemini 429 rate limit, retrying in %ds (attempt %d/3)", wait, attempt + 1)
+            logger.warning("Vertex Gemini %s, retrying in %ds (attempt %d/3)", resp.status_code, wait, attempt + 1)
             time.sleep(wait)
             continue
         resp.raise_for_status()
@@ -732,7 +771,7 @@ def _gemini_label_clusters(clusters_meta: list[dict]) -> list[str]:
         c["majority_category"].replace("_", " ").title()
         for c in clusters_meta
     ]
-    if not GEMINI_API_KEY:
+    if not GOOGLE_CLOUD_PROJECT:
         return fallbacks
 
     cache_key = json.dumps(clusters_meta, sort_keys=True)
@@ -754,7 +793,7 @@ def _gemini_label_clusters(clusters_meta: list[dict]) -> list[str]:
         "landed together because their transaction descriptions are semantically related, "
         "NOT just because they share a category tag.\n\n"
         "For each cluster below, write an EXACTLY 2-word human-readable label that "
-        "captures the REAL, SPECIFIC spending behaviour — the habit or lifestyle pattern, "
+        "captures the specific spending pattern in a clear, professional, descriptive way, "
         "NOT the generic category name.\n\n"
         "STRICT RULES (violating any rule is wrong):\n"
         "1. Every label must be EXACTLY 2 words.\n"
@@ -762,13 +801,13 @@ def _gemini_label_clusters(clusters_meta: list[dict]) -> list[str]:
         "   the same label or even the same first word.\n"
         "3. No label may be a plain category name or a synonym of one "
         "(e.g. 'Dining Out', 'Food Delivery', 'Transportation', 'Entertainment', 'Shopping' are banned).\n"
-        "4. Labels must be specific and contextual — they should reflect the actual merchants/terms.\n\n"
-        "Think about WHAT the person is actually doing in their life, not just the merchant type.\n"
-        "Great examples: 'Coffee Ritual', 'Weekend Getaways', 'Late-night Delivery', "
-        "'Streaming Binge', 'Gym Grind', 'Work Lunches', 'Date Nights', 'Daily Commute', "
-        "'Subscription Creep', 'Impulse Buys', 'Happy Hour', 'Grocery Runs'.\n"
+        "4. Labels must be specific and contextual — they should reflect the actual merchants/terms.\n"
+        "5. Tone must be professional, neutral, and concise. Avoid whimsical, playful, emotional, or slang phrasing.\n\n"
+        "Think about the functional spending pattern, not a lifestyle slogan.\n"
+        "Great examples: 'Home Decor', 'Kitchen Supplies', 'Office Equipment', "
+        "'Pet Care', 'Home Improvement', 'Personal Care', 'Coffee Purchases', 'Grocery Essentials'.\n"
         "Bad examples: 'Dining', 'Food Delivery', 'Transportation', 'Entertainment', "
-        "'Shopping', 'Online Shopping' — too generic or category-rehash.\n\n"
+        "'Shopping', 'Online Shopping', 'Coffee Ritual', 'Weekend Getaways' — too generic or too whimsical.\n\n"
         "You are labelling ALL clusters at once. Read ALL of them before writing any label "
         "so that you can ensure uniqueness across the full list.\n\n"
         "Return ONLY a JSON array of strings, one label per cluster, in the same order.\n"
@@ -822,7 +861,7 @@ def _gemini_summarize_clusters(clusters: list[dict]) -> list[str]:
                 bullets.append(f"{label}: {spend} spent")
         return bullets
 
-    if not GEMINI_API_KEY:
+    if not GOOGLE_CLOUD_PROJECT:
         return _fallback()
 
     payload = []
@@ -2025,10 +2064,10 @@ def _generate_monthly_llm_comments(
     total_spent: float,
     category_rows: list[dict],
     merchant_rows: list[dict],
-) -> tuple[str, str, list[dict], list[str], Optional[float], Optional[int]]:
-    fallback_comments, fallback_headline, fallback_suggestions, fallback_watch = _build_monthly_fallback(total_spent, category_rows, merchant_rows)
-    if not GEMINI_API_KEY:
-        return fallback_comments, fallback_headline, fallback_suggestions, fallback_watch, None, None
+) -> tuple[str, list[str], Optional[float], Optional[int]]:
+    fallback_comments, fallback_suggestions = _build_monthly_fallback(total_spent, category_rows, merchant_rows)
+    if not GOOGLE_CLOUD_PROJECT:
+        return fallback_comments, fallback_suggestions, None, None
 
     try:
         t_llm = time.perf_counter()

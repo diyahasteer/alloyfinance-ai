@@ -7,7 +7,6 @@ import NL2SQLPanel from "./components/NL2SQLPanel";
 import CustomerPanel from "./components/CustomerPanel";
 import MonthlyReportsPanel from "./components/MonthlyReportsPanel";
 import SemanticClusters from "./components/SemanticClusters";
-import AIAnalysisPanel from "./components/AIAnalysisPanel";
 import PerformanceDashboard from "./components/PerformanceDashboard";
 import { clustersApi } from "./api/clusters";
 import { searchApi } from "./api/search";
@@ -279,11 +278,12 @@ function LoginScreen({ auth }) {
 function Dashboard({ auth }) {
   const {
     transactions, loading, error, activeFilter,
-    fetchRecent, fetchByCategory, fetchCurrentMonth, fetchPreviousMonth, fetchAll, createTransaction,
+    fetchRecent, fetchCurrentMonth, fetchPreviousMonth, fetchAll, createTransaction,
   } = useTransactions();
 
   const [tab, setTab] = useState("transactions");
   const [showForm, setShowForm] = useState(false);
+  const [timeFilter, setTimeFilter] = useState("recent");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [categories, setCategories] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -303,20 +303,46 @@ function Dashboard({ auth }) {
   }, []);
 
   const handleCategoryChange = (e) => {
-    const val = e.target.value;
-    setCategoryFilter(val);
-    if (activeFilter === "all-time") return;
-    if (val) fetchByCategory(val);
-    else fetchRecent();
+    setCategoryFilter(e.target.value);
   };
 
+  const applyTimeFilter = useCallback((nextFilter) => {
+    setTimeFilter(nextFilter);
+    if (nextFilter === "all-time") fetchAll();
+    else if (nextFilter === "current-month") fetchCurrentMonth();
+    else if (nextFilter === "previous-month") fetchPreviousMonth();
+    else fetchRecent();
+  }, [fetchAll, fetchCurrentMonth, fetchPreviousMonth, fetchRecent]);
+
+  useEffect(() => {
+    // Keep selected time chip in sync with the hook's source data mode.
+    if (activeFilter === "all-time") setTimeFilter("all-time");
+    else if (activeFilter === "current-month") setTimeFilter("current-month");
+    else if (activeFilter === "previous-month") setTimeFilter("previous-month");
+    else if (activeFilter === "recent") setTimeFilter("recent");
+    else if (activeFilter.startsWith("category:")) setTimeFilter("recent");
+  }, [activeFilter]);
+
+  const categoryMatches = useCallback((txnCategory, selectedCategory) => (
+    String(txnCategory || "").toLowerCase() === String(selectedCategory || "").toLowerCase()
+  ), []);
+
+  const timeFilterLabel = useCallback(() => {
+    if (timeFilter === "all-time") return "All time";
+    if (timeFilter === "current-month") return "This month";
+    if (timeFilter === "previous-month") return "Last month";
+    return "Recent transactions";
+  }, [timeFilter]);
+
+  const filterLabel = useCallback(() => {
+    if (!categoryFilter) return timeFilterLabel();
+    return `${timeFilterLabel()} · Category: ${categoryFilter}`;
+  }, [categoryFilter, timeFilterLabel]);
+
   const filteredTransactions = useMemo(() => {
-    if (activeFilter !== "all-time") return transactions;
-    return transactions.filter((t) => {
-      if (categoryFilter && t.spending_category !== categoryFilter) return false;
-      return true;
-    });
-  }, [activeFilter, transactions, categoryFilter]);
+    if (!categoryFilter) return transactions;
+    return transactions.filter((t) => categoryMatches(t.spending_category, categoryFilter));
+  }, [transactions, categoryFilter, categoryMatches]);
 
   const stats = useMemo(() => {
     const expenses = filteredTransactions
@@ -379,17 +405,6 @@ function Dashboard({ auth }) {
     }
   }, [sfQuery, sfThreshold, sfTimeRange]);
 
-  const filterLabel = () => {
-    if (activeFilter === "recent") return "Recent transactions";
-    if (activeFilter === "all-time") return "All time";
-    if (activeFilter === "current-month") return "Current month";
-    if (activeFilter === "previous-month") return "Previous month";
-    if (activeFilter.startsWith("category:")) return `Category: ${activeFilter.split(":")[1]}`;
-    return "Transactions";
-  };
-
-
-
   return (
     <div className="app-shell">
       {/* Navbar */}
@@ -404,7 +419,6 @@ function Dashboard({ auth }) {
               ["search", "Semantic Search"],
               ["insights", "Insights"],
               ["semantic-clusters", "Semantic Clusters"],
-              ["ai-analysis", "AI Analysis"],
             ].map(([t, label]) => (
               <button
                 key={t}
@@ -468,26 +482,26 @@ function Dashboard({ auth }) {
             <section className="controls">
               <div className="filter-group">
                 <button
-                  className={`btn btn-filter ${activeFilter === "recent" ? "active" : ""}`}
-                  onClick={() => { setCategoryFilter(""); fetchRecent(); }}
+                  className={`btn btn-filter ${timeFilter === "recent" ? "active" : ""}`}
+                  onClick={() => applyTimeFilter("recent")}
                 >
                   Recent
                 </button>
                 <button
-                  className={`btn btn-filter ${activeFilter === "all-time" ? "active" : ""}`}
-                  onClick={() => { setCategoryFilter(""); fetchAll(); }}
+                  className={`btn btn-filter ${timeFilter === "all-time" ? "active" : ""}`}
+                  onClick={() => applyTimeFilter("all-time")}
                 >
                   All Time
                 </button>
                 <button
-                  className={`btn btn-filter ${activeFilter === "current-month" ? "active" : ""}`}
-                  onClick={() => { setCategoryFilter(""); fetchCurrentMonth(); }}
+                  className={`btn btn-filter ${timeFilter === "current-month" ? "active" : ""}`}
+                  onClick={() => applyTimeFilter("current-month")}
                 >
                   This Month
                 </button>
                 <button
-                  className={`btn btn-filter ${activeFilter === "previous-month" ? "active" : ""}`}
-                  onClick={() => { setCategoryFilter(""); fetchPreviousMonth(); }}
+                  className={`btn btn-filter ${timeFilter === "previous-month" ? "active" : ""}`}
+                  onClick={() => applyTimeFilter("previous-month")}
                 >
                   Last Month
                 </button>
@@ -631,7 +645,6 @@ function Dashboard({ auth }) {
           {tab === "monthly-reports" && <MonthlyReportsPanel />}
           {tab === "insights" && <CustomerPanel />}
           {tab === "semantic-clusters" && <SemanticClusters />}
-          {tab === "ai-analysis" && <AIAnalysisPanel />}
 
           {tab === "search" && (
             <section className="card">
