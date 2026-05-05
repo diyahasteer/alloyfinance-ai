@@ -7,7 +7,6 @@ import NL2SQLPanel from "./components/NL2SQLPanel";
 import CustomerPanel from "./components/CustomerPanel";
 import MonthlyReportsPanel from "./components/MonthlyReportsPanel";
 import SemanticClusters from "./components/SemanticClusters";
-import AIAnalysisPanel from "./components/AIAnalysisPanel";
 import PerformanceDashboard from "./components/PerformanceDashboard";
 import { clustersApi } from "./api/clusters";
 import { searchApi } from "./api/search";
@@ -404,7 +403,6 @@ function Dashboard({ auth }) {
               ["search", "Semantic Search"],
               ["insights", "Insights"],
               ["semantic-clusters", "Semantic Clusters"],
-              ["ai-analysis", "AI Analysis"],
             ].map(([t, label]) => (
               <button
                 key={t}
@@ -631,7 +629,6 @@ function Dashboard({ auth }) {
           {tab === "monthly-reports" && <MonthlyReportsPanel />}
           {tab === "insights" && <CustomerPanel />}
           {tab === "semantic-clusters" && <SemanticClusters />}
-          {tab === "ai-analysis" && <AIAnalysisPanel />}
 
           {tab === "search" && (
             <section className="card">

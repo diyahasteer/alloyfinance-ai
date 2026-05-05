@@ -1199,6 +1199,42 @@ body { background: var(--bg); min-height: 100vh; color: var(--text); }
   margin-bottom: 0;
 }
 
+.analysis-insight .markdown-body {
+  color: #334155;
+  font-size: 0.95rem;
+  line-height: 1.7;
+}
+
+.analysis-insight .markdown-body p {
+  margin: 0 0 0.6rem;
+}
+
+.analysis-insight .markdown-body p:last-child {
+  margin-bottom: 0;
+}
+
+.analysis-insight .markdown-body ul,
+.analysis-insight .markdown-body ol {
+  margin: 0.4rem 0 0.6rem 1.25rem;
+  padding: 0;
+}
+
+.analysis-insight .markdown-body li {
+  margin-bottom: 0.25rem;
+}
+
+.analysis-insight .markdown-body strong {
+  color: #1e293b;
+  font-weight: 600;
+}
+
+.analysis-insight .markdown-body code {
+  background: #e2e8f0;
+  border-radius: 4px;
+  font-size: 0.85em;
+  padding: 0.1em 0.35em;
+}
+
 .sql-details {
   margin-top: 1rem;
   margin-bottom: 1rem;
