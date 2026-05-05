@@ -4,8 +4,9 @@ const INITIAL = {
   amount: "",
   merchant_name: "",
   spending_category: "",
+  quantity: 1,
   country: "United Kingdom",
-  description: "",
+  item_description: "",
 };
 
 export default function TransactionForm({ onSubmit, categories = [] }) {
@@ -24,7 +25,8 @@ export default function TransactionForm({ onSubmit, categories = [] }) {
       await onSubmit({
         ...form,
         amount: parseFloat(form.amount),
-        description: form.description || null,
+        quantity: parseInt(form.quantity, 10) || 1,
+        item_description: form.item_description || null,
       });
       setForm(INITIAL);
     } catch (err) {
@@ -46,6 +48,7 @@ export default function TransactionForm({ onSubmit, categories = [] }) {
           <input
             type="number"
             step="0.01"
+            min="0"
             required
             placeholder="42.50"
             value={form.amount}
@@ -54,32 +57,44 @@ export default function TransactionForm({ onSubmit, categories = [] }) {
         </label>
 
         <label className="field">
-          <span>Merchant</span>
+          <span>Merchant Name</span>
           <input
             type="text"
             required
-            placeholder="Pottery Barn"
+            placeholder="Tesco"
             value={form.merchant_name}
             onChange={set("merchant_name")}
           />
         </label>
 
         <label className="field">
-          <span>Category</span>
+          <span>Spending Category</span>
           <select value={form.spending_category} onChange={set("spending_category")} required>
             <option value="" disabled>Select a category</option>
             {categories.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
+              <option key={c} value={c}>{c}</option>
             ))}
           </select>
+        </label>
+
+        <label className="field">
+          <span>Quantity</span>
+          <input
+            type="number"
+            min="1"
+            step="1"
+            required
+            placeholder="1"
+            value={form.quantity}
+            onChange={set("quantity")}
+          />
         </label>
 
         <label className="field">
           <span>Country</span>
           <input
             type="text"
+            required
             placeholder="United Kingdom"
             value={form.country}
             onChange={set("country")}
@@ -87,12 +102,12 @@ export default function TransactionForm({ onSubmit, categories = [] }) {
         </label>
 
         <label className="field field-wide">
-          <span>Description</span>
+          <span>Item Description</span>
           <input
             type="text"
-            placeholder="item description (used for semantic search)"
-            value={form.description}
-            onChange={set("description")}
+            placeholder="Item description (used for semantic search)"
+            value={form.item_description}
+            onChange={set("item_description")}
           />
         </label>
       </div>

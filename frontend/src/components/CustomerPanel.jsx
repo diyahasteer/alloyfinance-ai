@@ -3,7 +3,7 @@ import { customerApi } from "../api/customer";
 import TransactionTable from "./TransactionTable";
 
 const CHIPS = [
-  "How much did I spend on dining last month?",
+  "How much did I spend on food last month?",
   "Find transactions similar to my gym membership",
   "Summarize my spending for January",
   "Cluster my merchants into spending groups",

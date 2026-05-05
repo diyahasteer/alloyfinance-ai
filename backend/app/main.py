@@ -597,17 +597,16 @@ async def get_me(user: dict = Depends(get_current_user)):
 # and budget preference requests.
 class SpendingCategory(str, Enum):
     """Valid spending categories — shared by transactions and budget preferences."""
-    groceries      = "groceries"
-    dining         = "dining"
-    transportation = "transportation"
-    rent           = "rent"
-    utilities      = "utilities"
-    entertainment  = "entertainment"
-    travel         = "travel"
-    subscriptions  = "subscriptions"
-    healthcare     = "healthcare"
-    shopping       = "shopping"
-    income         = "income"
+    shopping    = "shopping"
+    gifts       = "gifts"
+    household   = "household"
+    office      = "office"
+    clothing    = "clothing"
+    hobbies     = "hobbies"
+    food        = "food"
+    beauty      = "beauty"
+    toys        = "toys"
+    stationery  = "stationery"
 
 
 # --- Item Models ---
@@ -636,14 +635,10 @@ class BudgetCreate(BaseModel):
 class TransactionCreate(BaseModel):
     amount: float
     merchant_name: str
-    merchant_category: str
     spending_category: str
-    transaction_type: str = Field(description="'credit' or 'debit'")
-    payment_method: str
-    city: str
-    country: str = "US"
-    currency: str = "USD"
-    description: Optional[str] = None
+    quantity: int = 1
+    country: str = "United Kingdom"
+    item_description: Optional[str] = None
 
 
 def _serialize_transaction(row: asyncpg.Record) -> dict:
@@ -1033,7 +1028,7 @@ async def delete_item(item_id: int):
 async def create_transaction(txn: TransactionCreate, user: dict = Depends(get_current_user)):
     txn_id = uuid.uuid4()
     ts = datetime.now(timezone.utc)
-    item_description = txn.description or txn.merchant_name
+    item_description = txn.item_description or txn.merchant_name
     embed_text = " ".join(filter(None, [txn.merchant_name, txn.spending_category, item_description]))
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
@@ -1044,7 +1039,7 @@ async def create_transaction(txn: TransactionCreate, user: dict = Depends(get_cu
             RETURNING transaction_id, user_id, timestamp, amount, merchant_name,
                       spending_category, quantity, country, item_description AS description""",
             txn_id, int(user["user_id"]), ts, txn.amount, txn.merchant_name,
-            txn.spending_category, item_description, 1, txn.country,
+            txn.spending_category, item_description, txn.quantity, txn.country,
         )
         try:
             vec = _embed_text(embed_text)
@@ -1430,7 +1425,7 @@ async def _generate_sql_from_question(question: str) -> str:
             row = await conn.fetchrow(
                 "SELECT alloydb_ai_nl.get_sql($1::text, $2::text, '{}'::json) ->> 'sql' AS sql",
                 "app_config_v2",
-                req.question.strip(),
+                stripped_question,
             )
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"NL2SQL generation failed: {e}")
@@ -1443,58 +1438,43 @@ async def _generate_sql_from_question(question: str) -> str:
 def _add_finance_domain_context(question: str) -> str:
     return (
         f"{question}. "
-        "Use only these spending_category values when filtering: groceries, dining, shopping, subscriptions, "
-        "utilities, rent, healthcare, transportation, entertainment, income, travel. "
-        "If the user asks about food, treat food as groceries and dining."
+        "Use only these spending_category values when filtering: shopping, gifts, household, office, clothing, "
+        "hobbies, food, beauty, toys, stationery. "
+        "If the user asks about groceries or dining, treat it as food."
     )
 
 
 def _rewrite_common_category_aliases(sql: str) -> str:
-    food_alias_pattern = re.compile(
-        r"(?:LOWER\(\s*)?spending_category\s*(?:\)\s*)?=\s*'food'",
-        flags=re.IGNORECASE,
-    )
-    return food_alias_pattern.sub("spending_category IN ('groceries', 'dining')", sql)
+    return sql
 
 
 SPENDING_CONTEXT_CATEGORIES = [
-    "groceries",
-    "dining",
     "shopping",
-    "subscriptions",
-    "utilities",
-    "rent",
-    "healthcare",
-    "transportation",
-    "entertainment",
-    "income",
-    "travel",
+    "gifts",
+    "household",
+    "office",
+    "clothing",
+    "hobbies",
+    "food",
+    "beauty",
+    "toys",
+    "stationery",
 ]
 
 
 def _extract_context_categories(question: str, sql: str) -> list[str]:
     haystack = f"{question} {sql}".lower()
-    categories = [category for category in SPENDING_CONTEXT_CATEGORIES if category in haystack]
-    if "food" in haystack:
-        categories.extend(["groceries", "dining"])
-    return list(dict.fromkeys(categories))
+    return [category for category in SPENDING_CONTEXT_CATEGORIES if category in haystack]
 
-
-def _context_transaction_type(question: str, sql: str) -> str:
-    haystack = f"{question} {sql}".lower()
-    if any(term in haystack for term in ["income", "salary", "payroll", "credit"]):
-        return "credit"
-    return "debit"
 
 
 async def _fetch_supporting_transaction_context(user_id: str, question: str, sql: str, limit: int = 12) -> list[dict]:
     categories = _extract_context_categories(question, sql)
-    transaction_type = _context_transaction_type(question, sql)
     category_clause = ""
-    params: list = [int(user_id), transaction_type, limit]
+    params: list = [int(user_id), limit]
 
     if categories:
-        category_clause = "AND spending_category = ANY($4::text[])"
+        category_clause = "AND spending_category = ANY($3::text[])"
         params.append(categories)
 
     async with pool.acquire() as conn:
@@ -1505,16 +1485,14 @@ async def _fetch_supporting_transaction_context(user_id: str, question: str, sql
                 amount,
                 merchant_name,
                 spending_category,
-                transaction_type,
-                payment_method,
-                city,
-                description
-            FROM transactions
+                quantity,
+                country,
+                item_description
+            FROM transactions_2
             WHERE user_id = $1
-              AND transaction_type = $2
               {category_clause}
             ORDER BY ABS(amount) DESC, timestamp DESC
-            LIMIT $3
+            LIMIT $2
             """,
             *params,
         )
@@ -1525,10 +1503,9 @@ async def _fetch_supporting_transaction_context(user_id: str, question: str, sql
             "amount": float(row["amount"]),
             "merchant_name": row["merchant_name"],
             "spending_category": row["spending_category"],
-            "transaction_type": row["transaction_type"],
-            "payment_method": row["payment_method"],
-            "city": row["city"],
-            "description": row["description"],
+            "quantity": row["quantity"],
+            "country": row["country"],
+            "description": row["item_description"],
         }
         for row in rows
     ]
@@ -1559,14 +1536,16 @@ ROW_LIMIT = 200
 
 def _scope_transactions_sql(sql: str, user_id: str) -> str:
     safe_user_id = int(user_id)
-    normalized_sql = re.sub(r"\bpublic\.transactions\b", "transactions", sql, flags=re.IGNORECASE)
-    if re.search(r"^\s*WITH\s+transactions\s+AS\s*\(", normalized_sql, flags=re.IGNORECASE):
+    normalized_sql = re.sub(r"\bpublic\.transactions_2\b", "transactions_2", sql, flags=re.IGNORECASE)
+    normalized_sql = re.sub(r"\bpublic\.transactions\b", "transactions_2", normalized_sql, flags=re.IGNORECASE)
+    if re.search(r"^\s*WITH\s+transactions_2\s+AS\s*\(", normalized_sql, flags=re.IGNORECASE):
         raise HTTPException(status_code=422, detail="Generated query could not be safely scoped")
     scoped_transactions_cte = (
-        "WITH transactions AS ("
-        f"SELECT * FROM public.transactions WHERE user_id = {safe_user_id}"
+        "WITH transactions_2 AS ("
+        f"SELECT * FROM public.transactions_2 WHERE user_id = {safe_user_id}"
         ")"
     )
+    normalized_sql = re.sub(r"\btransactions\b", "transactions_2", normalized_sql, flags=re.IGNORECASE)
     if normalized_sql.lstrip().upper().startswith("WITH "):
         return re.sub(r"^\s*WITH\s+", f"{scoped_transactions_cte}, ", normalized_sql, count=1, flags=re.IGNORECASE)
     return f"{scoped_transactions_cte} {normalized_sql}"

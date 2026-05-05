@@ -90,9 +90,10 @@ export default function NL2SQLPanel() {
             <h2>Results</h2>
             <span className="txn-count">
               {resultRowCount} row{resultRowCount !== 1 ? "s" : ""}
+              {result?.truncated ? " (truncated)" : ""}
             </span>
           </div>
-          <NL2SQLResultTable result={result} />
+          <NL2SQLResultTable key={resultRowCount} result={result} />
         </section>
       )}
     </div>

@@ -27,7 +27,6 @@ sys.modules.setdefault("passlib.context", passlib_context_module)
 
 from app.main import (
     _add_finance_domain_context,
-    _context_transaction_type,
     _extract_context_categories,
     _rewrite_common_category_aliases,
     _scope_transactions_sql,
@@ -36,55 +35,48 @@ from app.main import (
 
 class MainHelperTests(unittest.TestCase):
     def test_scope_transactions_sql_adds_user_scoped_cte(self):
+        scoped = _scope_transactions_sql("SELECT * FROM transactions_2", "42")
+
+        self.assertIn("WITH transactions_2 AS (SELECT * FROM public.transactions_2 WHERE user_id = 42)", scoped)
+        self.assertTrue(scoped.endswith("SELECT * FROM transactions_2"))
+
+    def test_scope_transactions_sql_rewrites_old_table_name(self):
         scoped = _scope_transactions_sql("SELECT * FROM transactions", "42")
 
-        self.assertIn("WITH transactions AS (SELECT * FROM public.transactions WHERE user_id = 42)", scoped)
-        self.assertTrue(scoped.endswith("SELECT * FROM transactions"))
+        self.assertIn("public.transactions_2 WHERE user_id = 42", scoped)
 
     def test_scope_transactions_sql_merges_existing_with_clause(self):
         scoped = _scope_transactions_sql("WITH totals AS (SELECT 1) SELECT * FROM totals", "42")
 
-        self.assertTrue(scoped.startswith("WITH transactions AS"))
+        self.assertTrue(scoped.startswith("WITH transactions_2 AS"))
         self.assertIn(", totals AS (SELECT 1)", scoped)
 
-    def test_rewrite_common_category_aliases_maps_food_to_existing_categories(self):
-        rewritten = _rewrite_common_category_aliases(
-            "SELECT SUM(amount) FROM public.transactions WHERE spending_category = 'food'"
-        )
-
-        self.assertIn("spending_category IN ('groceries', 'dining')", rewritten)
-        self.assertNotIn("= 'food'", rewritten)
+    def test_rewrite_common_category_aliases_is_passthrough(self):
+        sql = "SELECT SUM(amount) FROM public.transactions_2 WHERE spending_category = 'food'"
+        self.assertEqual(_rewrite_common_category_aliases(sql), sql)
 
     def test_finance_domain_context_mentions_valid_categories(self):
         context = _add_finance_domain_context("How much did I spend on food?")
 
-        self.assertIn("groceries", context)
-        self.assertIn("dining", context)
-        self.assertIn("food as groceries and dining", context)
+        self.assertIn("shopping", context)
+        self.assertIn("food", context)
+        self.assertIn("hobbies", context)
 
     def test_extract_context_categories_uses_question_and_sql(self):
         categories = _extract_context_categories(
-            "How much did I spend on groceries?",
-            "SELECT SUM(amount) FROM transactions",
+            "How much did I spend on shopping?",
+            "SELECT SUM(amount) FROM transactions_2",
         )
 
-        self.assertEqual(categories, ["groceries"])
+        self.assertEqual(categories, ["shopping"])
 
-    def test_extract_context_categories_maps_food_to_groceries_and_dining(self):
+    def test_extract_context_categories_returns_empty_for_unknown(self):
         categories = _extract_context_categories(
-            "How much did I spend on food?",
-            "SELECT SUM(amount) FROM transactions WHERE spending_category IN ('groceries', 'dining')",
+            "How much did I spend on dining?",
+            "SELECT SUM(amount) FROM transactions_2",
         )
 
-        self.assertEqual(categories, ["groceries", "dining"])
-
-    def test_context_transaction_type_uses_credit_for_income_questions(self):
-        transaction_type = _context_transaction_type(
-            "How much income did I receive?",
-            "SELECT SUM(amount) FROM transactions WHERE spending_category = 'income'",
-        )
-
-        self.assertEqual(transaction_type, "credit")
+        self.assertEqual(categories, [])
 
 
 if __name__ == "__main__":
