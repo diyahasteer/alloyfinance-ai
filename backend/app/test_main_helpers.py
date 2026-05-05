@@ -2,6 +2,7 @@ import os
 import sys
 import types
 import unittest
+from unittest.mock import patch
 
 os.environ.setdefault("DATABASE_URL", "postgresql://example")
 os.environ.setdefault("JWT_SECRET", "test-secret")
@@ -28,12 +29,17 @@ sys.modules.setdefault("passlib.context", passlib_context_module)
 from app.main import (
     _add_finance_domain_context,
     _extract_context_categories,
+    _gemini_label_cache,
+    _gemini_label_clusters,
     _rewrite_common_category_aliases,
     _scope_transactions_sql,
 )
 
 
 class MainHelperTests(unittest.TestCase):
+    def setUp(self):
+        _gemini_label_cache.clear()
+
     def test_scope_transactions_sql_adds_user_scoped_cte(self):
         scoped = _scope_transactions_sql("SELECT * FROM transactions_2", "42")
 
@@ -77,6 +83,46 @@ class MainHelperTests(unittest.TestCase):
         )
 
         self.assertEqual(categories, [])
+
+    def test_gemini_label_clusters_uses_vertex_helper(self):
+        clusters_meta = [
+            {"merchants": ["Target"], "terms": ["cleaning", "detergent"], "majority_category": "household"},
+            {"merchants": ["Home Depot"], "terms": ["hardware", "repair"], "majority_category": "household"},
+        ]
+        vertex_body = {
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [
+                            {"text": '["Cleaning Supplies", "Home Repairs"]'},
+                        ],
+                    },
+                },
+            ],
+        }
+
+        with (
+            patch("app.main.GOOGLE_CLOUD_PROJECT", "test-project"),
+            patch("app.main.GEMINI_MODEL", "gemini-2.5-flash"),
+            patch("app.main.post_vertex_generate_content", return_value=(vertex_body, 123)) as post_vertex,
+        ):
+            labels = _gemini_label_clusters(clusters_meta)
+
+        self.assertEqual(labels, ["Cleaning Supplies", "Home Repairs"])
+        self.assertEqual(post_vertex.call_count, 1)
+        self.assertEqual(post_vertex.call_args.kwargs["model"], "gemini-2.5-flash")
+        self.assertEqual(post_vertex.call_args.kwargs["generation_config"]["responseMimeType"], "application/json")
+
+    def test_gemini_label_clusters_falls_back_without_vertex_config(self):
+        clusters_meta = [
+            {"merchants": ["Target"], "terms": ["cleaning"], "majority_category": "household"},
+            {"merchants": ["Home Depot"], "terms": ["repair"], "majority_category": "household"},
+        ]
+
+        with patch("app.main.GOOGLE_CLOUD_PROJECT", ""):
+            labels = _gemini_label_clusters(clusters_meta)
+
+        self.assertEqual(labels, ["Household", "Household"])
 
 
 if __name__ == "__main__":
