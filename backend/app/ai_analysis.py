@@ -71,7 +71,7 @@ def post_vertex_generate_content(
     generation_config: dict[str, Any],
     model: str | None = None,
     timeout_s: int = 30,
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], int]:
     selected_model = validate_gemini_model(model) if model else get_gemini_model()
     project = get_google_cloud_project()
     location = get_google_cloud_location()
@@ -89,7 +89,8 @@ def post_vertex_generate_content(
         timeout=timeout_s,
     )
     response.raise_for_status()
-    return response.json()
+    raw = response.content or b""
+    return response.json(), len(raw)
 
 
 def format_query_results_for_prompt(columns: list[str], rows: list[list[Any]]) -> str:
@@ -216,7 +217,7 @@ def generate_monthly_report_comments_with_gemini(
     merchant_rows: list[dict[str, Any]],
     model: str | None = None,
     timeout_s: int = 40,
-) -> tuple[str, list[str]]:
+) -> tuple[str, list[str], int]:
     compact_payload = {
         "month": year_month,
         "total_spent_usd": round(total_spent, 2),
@@ -235,7 +236,7 @@ def generate_monthly_report_comments_with_gemini(
         "- Keep tone neutral and helpful.\n"
         f"Input JSON:\n{compact_payload}"
     )
-    body = post_vertex_generate_content(
+    body, response_bytes = post_vertex_generate_content(
         prompt=prompt,
         generation_config={
             "temperature": 0.2,
@@ -250,7 +251,7 @@ def generate_monthly_report_comments_with_gemini(
     suggestions = parsed.get("suggestions", [])
     if not comments or not isinstance(suggestions, list):
         raise ValueError("Monthly report response did not include comments and suggestions")
-    return comments, [str(s).strip() for s in suggestions if str(s).strip()][:3]
+    return comments, [str(s).strip() for s in suggestions if str(s).strip()][:3], response_bytes
 
 
 def generate_finance_insight_with_gemini(
@@ -280,7 +281,7 @@ def generate_finance_insight_with_gemini(
         query_results=query_results,
         supporting_context=supporting_transactions,
     )
-    body = post_vertex_generate_content(
+    body, _response_bytes = post_vertex_generate_content(
         prompt=prompt,
         generation_config={
             "temperature": 0.2,

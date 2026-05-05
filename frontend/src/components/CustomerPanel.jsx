@@ -50,7 +50,7 @@ export default function CustomerPanel() {
     <div className="nl-panel">
       <section className="card">
         <div className="table-header">
-          <h2>Insight</h2>
+          <h2>Insights</h2>
         </div>
         <p style={{ color: "#64748b", marginBottom: "0.75rem", fontSize: "0.9rem" }}>
           Describe what you want in plain language. We route to a tool and execute it in one step.
@@ -90,7 +90,7 @@ export default function CustomerPanel() {
 
       {result && (
         <section className="card">
-          <div className="table-header"><h2>Insight result</h2></div>
+          <div className="table-header"><h2>Result</h2></div>
           <p style={{ fontSize: "1.05rem", marginBottom: "0.5rem" }}><strong>{result.tool}</strong></p>
           <p style={{ color: "#64748b", marginBottom: "0.75rem" }}>
             {TOOL_LABELS[result.tool] || TOOL_LABELS.general}

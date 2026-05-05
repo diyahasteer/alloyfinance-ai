@@ -58,6 +58,14 @@ body { background: var(--bg); min-height: 100vh; color: var(--text); }
 .login-sub {
   color: var(--text-muted);
   font-size: 0.95rem;
+}
+
+/* Performance dashboard: more chart width on large screens (default .app stays 1100px). */
+.app.app--wide {
+  max-width: min(1400px, calc(100vw - 2.5rem));
+}
+
+.header {
   margin-bottom: 2rem;
 }
 
