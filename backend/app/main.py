@@ -94,7 +94,7 @@ if not JWT_SECRET:
 
 DATABASE_SSL_MODE = os.getenv("DATABASE_SSL_MODE", "disable").lower()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash").strip()
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "").strip() or "gemini-2.0-flash"
 GOOGLE_CLOUD_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT", "").strip()
 GOOGLE_CLOUD_LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1").strip()
 
@@ -714,6 +714,39 @@ def _gemini_post(prompt: str, temperature: float = 0.3) -> str:
         if resp.status_code == 429:
             wait = 2 ** attempt  # 1s, 2s, 4s
             logger.warning("Gemini 429 rate limit, retrying in %ds (attempt %d/3)", wait, attempt + 1)
+            time.sleep(wait)
+            continue
+        resp.raise_for_status()
+        return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+    resp.raise_for_status()  # re-raise after exhausting retries
+    return ""  # unreachable
+
+
+def _vertex_gemini_post(prompt: str, temperature: float = 0.3) -> str:
+    """Call Gemini via Vertex AI using ADC and return response text."""
+    if not GOOGLE_CLOUD_PROJECT:
+        raise ValueError("GOOGLE_CLOUD_PROJECT is not configured")
+    url = (
+        f"https://{GOOGLE_CLOUD_LOCATION}-aiplatform.googleapis.com/v1/projects/{GOOGLE_CLOUD_PROJECT}"
+        f"/locations/{GOOGLE_CLOUD_LOCATION}/publishers/google/models/{GEMINI_MODEL}:generateContent"
+    )
+    body = {
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": temperature, "responseMimeType": "application/json"},
+    }
+    for attempt in range(3):
+        resp = requests.post(
+            url,
+            json=body,
+            headers={
+                "Authorization": f"Bearer {_get_access_token()}",
+                "Content-Type": "application/json",
+            },
+            timeout=30,
+        )
+        if resp.status_code in (429, 503):
+            wait = 2 ** attempt  # 1s, 2s, 4s
+            logger.warning("Vertex Gemini %s, retrying in %ds (attempt %d/3)", resp.status_code, wait, attempt + 1)
             time.sleep(wait)
             continue
         resp.raise_for_status()
@@ -2006,27 +2039,9 @@ def _generate_monthly_llm_comments(
     merchant_rows: list[dict],
 ) -> tuple[str, list[str], Optional[float], Optional[int]]:
     fallback_comments, fallback_suggestions = _build_monthly_fallback(total_spent, category_rows, merchant_rows)
-    if not GEMINI_API_KEY:
-        return fallback_comments, fallback_suggestions
+    if not GOOGLE_CLOUD_PROJECT:
+        return fallback_comments, fallback_suggestions, None, None
 
-    compact_payload = {
-        "month": year_month,
-        "total_spent_usd": round(total_spent, 2),
-        "top_categories": category_rows[:6],
-        "top_merchants": merchant_rows[:6],
-    }
-    prompt = (
-        "You are a personal finance assistant. "
-        "Given JSON monthly spending data, produce concise report output.\n"
-        "Return ONLY valid JSON with keys:\n"
-        "- comments: string (2-3 sentences, clear and specific)\n"
-        "- suggestions: array of 3 strings with practical savings actions\n"
-        "Rules:\n"
-        "- Use only facts from the JSON.\n"
-        "- Mention exact dollar figures when present.\n"
-        "- Keep tone neutral and helpful.\n"
-        f"Input JSON:\n{compact_payload}"
-    )
     try:
         t_llm = time.perf_counter()
         comments, suggestions, gem_bytes = generate_monthly_report_comments_with_gemini(
@@ -2051,39 +2066,58 @@ async def _generate_monthly_report_payload(
     year_month = _parse_year_month(body.year_month)
     month_start, month_end = _month_window(year_month)
     user_id = int(user["user_id"])
+    month_transactions_cte = """
+        WITH month_transactions AS (
+            SELECT DISTINCT ON (transaction_id)
+                transaction_id,
+                user_id,
+                timestamp,
+                amount,
+                merchant_name,
+                spending_category
+            FROM (
+                SELECT transaction_id, user_id, timestamp, amount, merchant_name, spending_category, 1 AS source_rank
+                FROM transactions_2
+                WHERE user_id = $1
+                  AND timestamp >= $2
+                  AND timestamp < $3
+                UNION ALL
+                SELECT transaction_id, user_id, timestamp, amount, merchant_name, spending_category, 2 AS source_rank
+                FROM transactions
+                WHERE user_id = $1
+                  AND timestamp >= $2
+                  AND timestamp < $3
+            ) unioned
+            ORDER BY transaction_id, source_rank
+        )
+    """
 
     async with pool.acquire() as conn:
         spend_row = await conn.fetchrow(
-            """SELECT COALESCE(SUM(ABS(amount)), 0) AS total_spent
-               FROM transactions_2
-               WHERE user_id = $1
-                 AND amount < 0
-                 AND timestamp >= $2
-                 AND timestamp < $3""",
+            month_transactions_cte + """
+            SELECT COALESCE(SUM(ABS(amount)), 0) AS total_spent
+            FROM month_transactions
+            """,
             user_id, month_start, month_end,
         )
         category_rows_raw = await conn.fetch(
-            """SELECT spending_category AS category, COALESCE(SUM(ABS(amount)), 0) AS total_spent
-               FROM transactions_2
-               WHERE user_id = $1
-                 AND amount < 0
-                 AND timestamp >= $2
-                 AND timestamp < $3
-               GROUP BY spending_category
-               ORDER BY total_spent DESC
-               LIMIT 10""",
+            month_transactions_cte + """
+            SELECT spending_category AS category, COALESCE(SUM(ABS(amount)), 0) AS total_spent
+            FROM month_transactions
+            GROUP BY spending_category
+            ORDER BY total_spent DESC
+            LIMIT 10
+            """,
             user_id, month_start, month_end,
         )
         merchant_rows_raw = await conn.fetch(
-            """SELECT merchant_name, COALESCE(SUM(ABS(amount)), 0) AS total_spent, COUNT(*) AS transaction_count
-               FROM transactions_2
-               WHERE user_id = $1
-                 AND amount < 0
-                 AND timestamp >= $2
-                 AND timestamp < $3
-               GROUP BY merchant_name
-               ORDER BY total_spent DESC
-               LIMIT 10""",
+            month_transactions_cte + """
+            SELECT merchant_name, COALESCE(SUM(ABS(amount)), 0) AS total_spent, COUNT(*) AS transaction_count
+            FROM month_transactions
+            GROUP BY merchant_name
+            ORDER BY total_spent DESC
+            LIMIT 10
+            """,
             user_id, month_start, month_end,
         )
 
