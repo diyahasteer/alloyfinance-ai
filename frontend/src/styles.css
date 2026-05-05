@@ -387,8 +387,8 @@ body { min-height: 100vh; }
   word-break: break-word;
 }
 
-.amount-neg { color: #dc2626; }
-.amount-pos { color: #16a34a; }
+.amount-neg     { color: #dc2626; }
+.amount-neutral { color: #1e293b; }
 
 /* ---- Badges ---- */
 
@@ -403,16 +403,16 @@ body { min-height: 100vh; }
   color: #475569;
 }
 
-.badge-groceries   { background: #dcfce7; color: #166534; }
-.badge-dining      { background: #fef3c7; color: #92400e; }
 .badge-shopping    { background: #ede9fe; color: #5b21b6; }
-.badge-subscriptions { background: #dbeafe; color: #1e40af; }
-.badge-utilities   { background: #e0e7ff; color: #3730a3; }
-.badge-rent        { background: #fce7f3; color: #9d174d; }
-.badge-healthcare  { background: #ccfbf1; color: #115e59; }
-.badge-income      { background: #d1fae5; color: #065f46; }
-.badge-entertainment { background: #fef9c3; color: #854d0e; }
-.badge-transportation { background: #e0f2fe; color: #075985; }
+.badge-gifts       { background: #fce7f3; color: #9d174d; }
+.badge-household   { background: #dcfce7; color: #166534; }
+.badge-office      { background: #dbeafe; color: #1e40af; }
+.badge-clothing    { background: #fef3c7; color: #92400e; }
+.badge-hobbies     { background: #fef9c3; color: #854d0e; }
+.badge-food        { background: #ccfbf1; color: #115e59; }
+.badge-beauty      { background: #fce7f3; color: #be185d; }
+.badge-toys        { background: #e0f2fe; color: #075985; }
+.badge-stationery  { background: #e0e7ff; color: #3730a3; }
 
 .table-status {
   text-align: center;
@@ -630,6 +630,48 @@ body { min-height: 100vh; }
   gap: 1.25rem;
 }
 
+.cluster-summary-card {
+  background: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+}
+
+.cluster-summary-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #94a3b8;
+  margin: 0 0 0.75rem 0;
+}
+
+.cluster-summary-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.cluster-summary-item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  font-size: 0.9rem;
+  color: #1e293b;
+  line-height: 1.4;
+}
+
+.cluster-summary-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  position: relative;
+  top: 1px;
+}
+
 .cluster-grid {
   display: flex;
   flex-direction: column;
@@ -759,7 +801,22 @@ body { min-height: 100vh; }
   max-width: 380px;
 }
 
-/* ---- AI Analysis ---- */
+/* ---- Pagination ---- */
+
+.pagination-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.pagination-info {
+  font-size: 0.82rem;
+  color: #64748b;
+  min-width: 3rem;
+  text-align: center;
+}
+/* ---- AI Analysis ---- */ 
 
 .analysis-subtitle {
   color: #64748b;

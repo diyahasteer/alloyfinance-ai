@@ -10,14 +10,13 @@ function formatDate(iso) {
 
 function formatAmount(amount) {
   const num = typeof amount === "string" ? parseFloat(amount) : amount;
-  const isNeg = num < 0;
   const formatted = Math.abs(num).toLocaleString("en-US", {
     style: "currency",
     currency: "USD",
   });
   return (
-    <span className={isNeg ? "amount-neg" : "amount-pos"}>
-      {isNeg ? `-${formatted}` : `+${formatted}`}
+    <span className={num < 0 ? "amount-neg" : "amount-neutral"}>
+      {num < 0 ? `-${formatted}` : formatted}
     </span>
   );
 }
@@ -35,7 +34,7 @@ function DescCell({ text }) {
       onClick={() => setExpanded((e) => !e)}
       title={expanded ? "Click to collapse" : "Click to expand"}
     >
-      {text}
+      {text.toLowerCase()}
     </td>
   );
 }
@@ -58,8 +57,8 @@ export default function TransactionTable({ transactions, loading }) {
             <th>Merchant</th>
             <th>Category</th>
             <th>Amount</th>
-            <th>Payment</th>
-            <th>City</th>
+            <th>Qty</th>
+            <th>Country</th>
             <th>Description</th>
           </tr>
         </thead>
@@ -70,8 +69,8 @@ export default function TransactionTable({ transactions, loading }) {
               <td className="cell-merchant">{t.merchant_name}</td>
               <td>{categoryBadge(t.spending_category)}</td>
               <td className="cell-amount">{formatAmount(t.amount)}</td>
-              <td className="cell-payment">{t.payment_method.replace(/_/g, " ")}</td>
-              <td>{t.city}</td>
+              <td>{t.quantity ?? "—"}</td>
+              <td>{t.country || "—"}</td>
               <DescCell text={t.description} />
             </tr>
           ))}

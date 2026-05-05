@@ -4,12 +4,12 @@ import NL2SQLResultTable from "./NL2SQLResultTable";
 
 const CHIPS = [
   "Show total spending by category",
-  "Which categories am I over budget on?",
-  "What did I spend at restaurants last month?",
   "Top 5 merchants by total spend",
-  "How much did I spend on groceries this month?",
-  "Show all debit transactions in New York",
-  "Compare my spending to my budget limits",
+  "What did I spend on food last month?",
+  "Show all transactions from United Kingdom",
+  "Which categories have the most transactions?",
+  "What is my average transaction amount by category?",
+  "Show my most expensive purchases",
 ];
 
 export default function NL2SQLPanel() {

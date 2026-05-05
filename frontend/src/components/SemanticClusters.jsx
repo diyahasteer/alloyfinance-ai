@@ -71,16 +71,19 @@ export default function SemanticClusters() {
   const [clusters, setClusters] = useState([]);
   const [previousClusters, setPreviousClusters] = useState(null);
   const [clusterMeta, setClusterMeta] = useState(null);
+  const [summary, setSummary] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [sortBy, setSortBy] = useState("total_spend");
   const [spendThreshold, setSpendThreshold] = useState(0);
   const [expandedCluster, setExpandedCluster] = useState(null);
+  const [clusterPages, setClusterPages] = useState({});
 
   const handleCluster = useCallback(async () => {
     setLoading(true);
     setError("");
     setExpandedCluster(null);
+    setClusterPages({});
     try {
       const timeOpts =
         timeRange === "custom"
@@ -89,6 +92,7 @@ export default function SemanticClusters() {
       const data = await clustersApi.getClusters({ k, compare: compareMode, ...timeOpts });
       setClusters(data.clusters);
       setPreviousClusters(data.previous_clusters || null);
+      setSummary(data.summary || []);
       setClusterMeta({
         k: data.k,
         time_range: data.time_range,
@@ -235,6 +239,24 @@ export default function SemanticClusters() {
         {error && <p className="global-error" style={{ marginTop: "0.75rem" }}>{error}</p>}
       </section>
 
+      {/* Spending summary */}
+      {!loading && summary.length > 0 && (
+        <section className="card cluster-summary-card">
+          <h3 className="cluster-summary-title">Spending snapshot</h3>
+          <ul className="cluster-summary-list">
+            {summary.map((bullet, i) => (
+              <li key={i} className="cluster-summary-item">
+                <span
+                  className="cluster-summary-dot"
+                  style={{ background: CLUSTER_COLORS[displayedClusters[i]?.cluster_id % CLUSTER_COLORS.length]?.border || "#94a3b8" }}
+                />
+                {bullet}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {/* Cluster cards */}
       {!loading && displayedClusters.length > 0 && (
         <div className="cluster-grid">
@@ -282,11 +304,61 @@ export default function SemanticClusters() {
                   </button>
                 </div>
 
-                {isExpanded && (
-                  <div className="cluster-transactions">
-                    <TransactionTable transactions={cluster.transactions} loading={false} />
-                  </div>
-                )}
+                {isExpanded && (() => {
+                  const CLUSTER_PAGE_SIZE = 10;
+                  const page = clusterPages[cluster.cluster_id] || 0;
+                  const totalPages = Math.ceil(cluster.transactions.length / CLUSTER_PAGE_SIZE);
+                  const pageSlice = cluster.transactions.slice(page * CLUSTER_PAGE_SIZE, (page + 1) * CLUSTER_PAGE_SIZE);
+                  const setPage = (p) => setClusterPages((prev) => ({ ...prev, [cluster.cluster_id]: p }));
+                  return (
+                    <div className="cluster-transactions">
+                      {totalPages > 1 && (
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.5rem" }}>
+                          <span style={{ fontSize: "0.82rem", color: "#64748b" }}>
+                            Showing {page * CLUSTER_PAGE_SIZE + 1}–{Math.min((page + 1) * CLUSTER_PAGE_SIZE, cluster.transactions.length)} of {cluster.transactions.length}
+                          </span>
+                          <div className="pagination-row" style={{ margin: 0 }}>
+                            <button
+                              className="btn btn-filter"
+                              onClick={() => setPage(page - 1)}
+                              disabled={page === 0}
+                            >
+                              ← Prev
+                            </button>
+                            <span className="pagination-info">{page + 1} / {totalPages}</span>
+                            <button
+                              className="btn btn-filter"
+                              onClick={() => setPage(page + 1)}
+                              disabled={page >= totalPages - 1}
+                            >
+                              Next →
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      <TransactionTable transactions={pageSlice} loading={false} />
+                      {totalPages > 1 && (
+                        <div className="pagination-row" style={{ marginTop: "0.5rem" }}>
+                          <button
+                            className="btn btn-filter"
+                            onClick={() => setPage(page - 1)}
+                            disabled={page === 0}
+                          >
+                            ← Prev
+                          </button>
+                          <span className="pagination-info">{page + 1} / {totalPages}</span>
+                          <button
+                            className="btn btn-filter"
+                            onClick={() => setPage(page + 1)}
+                            disabled={page >= totalPages - 1}
+                          >
+                            Next →
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}

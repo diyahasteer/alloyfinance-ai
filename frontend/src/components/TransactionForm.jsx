@@ -1,41 +1,14 @@
 import { useState } from "react";
 
-const SPENDING_CATEGORIES = [
-  "groceries",
-  "dining",
-  "shopping",
-  "subscriptions",
-  "utilities",
-  "rent",
-  "healthcare",
-  "transportation",
-  "entertainment",
-  "income",
-  "other",
-];
-
-const PAYMENT_METHODS = [
-  "credit_card",
-  "debit_card",
-  "bank_transfer",
-  "mobile_wallet",
-  "cash",
-];
-
 const INITIAL = {
   amount: "",
   merchant_name: "",
-  merchant_category: "",
-  spending_category: "groceries",
-  transaction_type: "debit",
-  payment_method: "debit_card",
-  city: "",
-  country: "US",
-  currency: "USD",
+  spending_category: "",
+  country: "United Kingdom",
   description: "",
 };
 
-export default function TransactionForm({ onSubmit }) {
+export default function TransactionForm({ onSubmit, categories = [] }) {
   const [form, setForm] = useState(INITIAL);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
@@ -74,7 +47,7 @@ export default function TransactionForm({ onSubmit }) {
             type="number"
             step="0.01"
             required
-            placeholder="-42.50"
+            placeholder="42.50"
             value={form.amount}
             onChange={set("amount")}
           />
@@ -85,27 +58,17 @@ export default function TransactionForm({ onSubmit }) {
           <input
             type="text"
             required
-            placeholder="Trader Joe's"
+            placeholder="Pottery Barn"
             value={form.merchant_name}
             onChange={set("merchant_name")}
           />
         </label>
 
         <label className="field">
-          <span>Merchant Category</span>
-          <input
-            type="text"
-            required
-            placeholder="supermarket"
-            value={form.merchant_category}
-            onChange={set("merchant_category")}
-          />
-        </label>
-
-        <label className="field">
-          <span>Spending Category</span>
-          <select value={form.spending_category} onChange={set("spending_category")}>
-            {SPENDING_CATEGORIES.map((c) => (
+          <span>Category</span>
+          <select value={form.spending_category} onChange={set("spending_category")} required>
+            <option value="" disabled>Select a category</option>
+            {categories.map((c) => (
               <option key={c} value={c}>
                 {c}
               </option>
@@ -114,32 +77,12 @@ export default function TransactionForm({ onSubmit }) {
         </label>
 
         <label className="field">
-          <span>Type</span>
-          <select value={form.transaction_type} onChange={set("transaction_type")}>
-            <option value="debit">Debit</option>
-            <option value="credit">Credit</option>
-          </select>
-        </label>
-
-        <label className="field">
-          <span>Payment Method</span>
-          <select value={form.payment_method} onChange={set("payment_method")}>
-            {PAYMENT_METHODS.map((m) => (
-              <option key={m} value={m}>
-                {m.replace(/_/g, " ")}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="field">
-          <span>City</span>
+          <span>Country</span>
           <input
             type="text"
-            required
-            placeholder="Berkeley"
-            value={form.city}
-            onChange={set("city")}
+            placeholder="United Kingdom"
+            value={form.country}
+            onChange={set("country")}
           />
         </label>
 
@@ -147,7 +90,7 @@ export default function TransactionForm({ onSubmit }) {
           <span>Description</span>
           <input
             type="text"
-            placeholder="Weekly grocery run (for search later)"
+            placeholder="item description (used for semantic search)"
             value={form.description}
             onChange={set("description")}
           />

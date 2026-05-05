@@ -8,6 +8,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app/ ./app/
 COPY mcp/ ./mcp/
 COPY synthetic-data/ ./synthetic-data/
+COPY embed_transactions_2.py .
 
 EXPOSE 8000
 
