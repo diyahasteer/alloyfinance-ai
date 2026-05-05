@@ -30,9 +30,16 @@ synthetic-data/alloydb-auth-proxy*
 
 # frontend deps
 node_modules/
+frontend/dist/
 .DS_Store
 __pycache__/
 *.pyc
+
+# Presentation / local docs
+presentation_data/
+
+# Persisted performance metrics (CSV on disk)
+backend/app/data/*.csv
 
 # Kubernetes secrets
 *-secret.yaml
