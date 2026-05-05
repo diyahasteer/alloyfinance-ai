@@ -1125,20 +1125,6 @@ body { background: var(--bg); min-height: 100vh; color: var(--text); }
   cursor: pointer;
 }
 
-/* ---- Semantic Filter section (Transactions tab) ---- */
-
-.semantic-filter-row {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-  margin-bottom: 0.5rem;
-}
-
-.semantic-threshold-row {
-  margin-top: 0.75rem;
-  max-width: 380px;
-}
-
 /* ---- Pagination ---- */
 
 .pagination-row {
