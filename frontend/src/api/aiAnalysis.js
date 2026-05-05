@@ -1,14 +1,4 @@
-import { nl2sqlApi } from "./nl2sql.js";
-
 const BASE_URL = import.meta.env?.VITE_API_URL || "http://localhost:8000";
-
-export const ANALYSIS_METHODS = {
-  NL2SQL: "nl2sql",
-  EMBEDDINGS: "embeddings",
-};
-
-export const EMBEDDINGS_PLACEHOLDER_MESSAGE =
-  "Embedding-based analysis is coming soon. This mode will support qualitative financial insights and semantic search.";
 
 function authHeaders() {
   const token = localStorage.getItem("token");
@@ -30,36 +20,6 @@ export const aiAnalysisApi = {
   },
 };
 
-export async function analyzeWithNl2Sql(question, { nl2sqlClient = nl2sqlApi } = {}) {
-  const generated = await nl2sqlClient.generate(question.trim());
-  const data = await nl2sqlClient.execute(generated.sql);
-
-  return {
-    ...data,
-    method: ANALYSIS_METHODS.NL2SQL,
-    question: question.trim(),
-    sql: generated.sql,
-  };
-}
-
-export async function analyzeWithNl2SqlInsight(question, { analysisClient = aiAnalysisApi } = {}) {
-  // The AI Analysis backend scopes requests using the authenticated JWT.
+export async function analyzeWithNl2Sql(question, { analysisClient = aiAnalysisApi } = {}) {
   return analysisClient.nl2sql(question.trim());
-}
-
-export async function analyzeWithEmbeddings(question) {
-  // Replace this placeholder with the real embeddings API call when that backend endpoint exists.
-  return {
-    method: ANALYSIS_METHODS.EMBEDDINGS,
-    question: question.trim(),
-    answer: EMBEDDINGS_PLACEHOLDER_MESSAGE,
-  };
-}
-
-export async function analyzeQuestion({ method, question, analysisClient }) {
-  if (method === ANALYSIS_METHODS.EMBEDDINGS) {
-    return analyzeWithEmbeddings(question);
-  }
-
-  return analyzeWithNl2SqlInsight(question, { analysisClient });
 }
