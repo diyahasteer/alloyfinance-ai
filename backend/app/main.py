@@ -1,8 +1,10 @@
 import csv
 import json
 import os
+import time
 import uuid
 import logging
+import asyncio
 from collections import Counter, defaultdict
 from datetime import datetime, timezone, timedelta
 from enum import Enum
@@ -17,6 +19,8 @@ import jwt
 from dotenv import load_dotenv
 import asyncpg
 import requests
+import google.auth
+import google.auth.transport.requests
 from fastapi import FastAPI, HTTPException, Query, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -70,7 +74,35 @@ if not JWT_SECRET:
 
 DATABASE_SSL_MODE = os.getenv("DATABASE_SSL_MODE", "disable").lower()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash").strip()
+GOOGLE_CLOUD_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT", "").strip()
+GOOGLE_CLOUD_LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1").strip()
+
+_adc_creds = None
+_adc_session = None
+
+def _get_access_token() -> str:
+    global _adc_creds, _adc_session
+    if _adc_creds is None:
+        _adc_creds, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+        _adc_session = google.auth.transport.requests.Request()
+    if not _adc_creds.valid:
+        _adc_creds.refresh(_adc_session)
+    return _adc_creds.token
+
+def _embed_text(text: str) -> list[float]:
+    url = (
+        f"https://{GOOGLE_CLOUD_LOCATION}-aiplatform.googleapis.com/v1/projects/{GOOGLE_CLOUD_PROJECT}"
+        f"/locations/{GOOGLE_CLOUD_LOCATION}/publishers/google/models/text-embedding-005:predict"
+    )
+    resp = requests.post(
+        url,
+        json={"instances": [{"content": text}]},
+        headers={"Authorization": f"Bearer {_get_access_token()}", "Content-Type": "application/json"},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    return resp.json()["predictions"][0]["embeddings"]["values"]
 
 # JWT configuration for user session tokens.
 JWT_ALGORITHM = "HS256"
@@ -124,17 +156,8 @@ def _load_seed_transactions() -> list[dict]:
     return _cached_seed_transactions
 
 async def _seed_transactions_for_user(conn: asyncpg.Connection, user_id: int) -> None:
-    """Assign the shared seed transactions to a user if they have none.
-
-    This avoids duplicating seeded rows for returning users while ensuring
-    that every authenticated user has a default dataset available.
-    """
-    existing_count = await conn.fetchval(
-        "SELECT COUNT(*) FROM transactions WHERE user_id = $1",
-        user_id,
-    )
-    if existing_count and existing_count > 0:
-        return
+    # transactions_2 is the active table; no seeding needed
+    return
 
     seed_rows = _load_seed_transactions()
     if not seed_rows:
@@ -240,6 +263,22 @@ async def startup():
         """)
         await conn.execute("""
             ALTER TABLE transactions ADD COLUMN IF NOT EXISTS description TEXT
+        """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS transactions_2 (
+                transaction_id    UUID PRIMARY KEY,
+                user_id           INTEGER NOT NULL,
+                timestamp         TIMESTAMPTZ NOT NULL,
+                amount            NUMERIC(18, 2) NOT NULL,
+                merchant_name     TEXT NOT NULL,
+                spending_category TEXT NOT NULL,
+                item_description  TEXT NOT NULL,
+                quantity          INTEGER NOT NULL,
+                country           TEXT NOT NULL
+            )
+        """)
+        await conn.execute("""
+            ALTER TABLE transactions_2 ADD COLUMN IF NOT EXISTS embedding vector(768)
         """)
         await conn.execute("""
             ALTER TABLE transactions ADD COLUMN IF NOT EXISTS user_id INTEGER
@@ -588,11 +627,6 @@ class TransactionCreate(BaseModel):
 
 
 def _serialize_transaction(row: asyncpg.Record) -> dict:
-    """Convert a transaction row to JSON-safe primitives for API responses.
-
-    This normalizes UUIDs, timestamps, and numeric values so the frontend can
-    render them directly without driver-specific types.
-    """
     d = dict(row)
     d["transaction_id"] = str(d["transaction_id"])
     d["timestamp"] = d["timestamp"].isoformat()
@@ -632,22 +666,191 @@ def _prior_period(start_dt, end_dt):
 
 
 def _derive_cluster_label(members: list) -> tuple:
-    """Return (label, majority_category). majority_category is the stable match key."""
+    """Return (fallback_label, majority_category, top_merchants, top_terms).
+
+    majority_category is used as a stable period-comparison key.
+    fallback_label is used when Gemini is unavailable.
+    """
     categories = [row["spending_category"] for _, row in members]
     merchants = [row["merchant_name"] for _, row in members]
     majority_cat = Counter(categories).most_common(1)[0][0]
-    top_merchants = [m for m, _ in Counter(merchants).most_common(3)]
-    label = majority_cat.replace("_", " ").title()
+    top_merchants = [m for m, _ in Counter(merchants).most_common(5)]
+    fallback_label = majority_cat.replace("_", " ").title()
     if top_merchants:
-        label = f"{label} – {', '.join(top_merchants)}"
-    return label, majority_cat
+        fallback_label = f"{fallback_label} – {', '.join(top_merchants[:3])}"
+    return fallback_label, majority_cat, top_merchants
+
+
+_gemini_label_cache: dict[str, list[str]] = {}
+
+
+def _gemini_post(prompt: str, temperature: float = 0.3) -> str:
+    """POST to Gemini and return the text response. Retries up to 3x on 429."""
+    url = (
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
+    )
+    body = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": temperature, "responseMimeType": "application/json"},
+    }
+    for attempt in range(3):
+        resp = requests.post(url, json=body, timeout=30)
+        if resp.status_code == 429:
+            wait = 2 ** attempt  # 1s, 2s, 4s
+            logger.warning("Gemini 429 rate limit, retrying in %ds (attempt %d/3)", wait, attempt + 1)
+            time.sleep(wait)
+            continue
+        resp.raise_for_status()
+        return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+    resp.raise_for_status()  # re-raise after exhausting retries
+    return ""  # unreachable
+
+
+def _gemini_label_clusters(clusters_meta: list[dict]) -> list[str]:
+    """Call Gemini once with all cluster summaries; return a label per cluster.
+
+    clusters_meta: list of {"merchants": [...], "terms": [...], "majority_category": str}
+    Falls back to majority_category title if Gemini unavailable or fails.
+    """
+    fallbacks = [
+        c["majority_category"].replace("_", " ").title()
+        for c in clusters_meta
+    ]
+    if not GEMINI_API_KEY:
+        return fallbacks
+
+    cache_key = json.dumps(clusters_meta, sort_keys=True)
+    if cache_key in _gemini_label_cache:
+        return _gemini_label_cache[cache_key]
+
+    payload = [
+        {
+            "cluster_index": i,
+            "top_merchants": c["merchants"][:5],
+            "top_terms": c["terms"][:6],
+            "majority_category": c["majority_category"],
+        }
+        for i, c in enumerate(clusters_meta)
+    ]
+    prompt = (
+        "You are a personal finance assistant analysing spending clusters.\n"
+        "Each cluster was formed by semantic embedding similarity — merchants "
+        "landed together because their transaction descriptions are semantically related, "
+        "NOT just because they share a category tag.\n\n"
+        "For each cluster below, write an EXACTLY 2-word human-readable label that "
+        "captures the REAL, SPECIFIC spending behaviour — the habit or lifestyle pattern, "
+        "NOT the generic category name.\n\n"
+        "STRICT RULES (violating any rule is wrong):\n"
+        "1. Every label must be EXACTLY 2 words.\n"
+        "2. All labels across the entire list must be UNIQUE — no two clusters may share "
+        "   the same label or even the same first word.\n"
+        "3. No label may be a plain category name or a synonym of one "
+        "(e.g. 'Dining Out', 'Food Delivery', 'Transportation', 'Entertainment', 'Shopping' are banned).\n"
+        "4. Labels must be specific and contextual — they should reflect the actual merchants/terms.\n\n"
+        "Think about WHAT the person is actually doing in their life, not just the merchant type.\n"
+        "Great examples: 'Coffee Ritual', 'Weekend Getaways', 'Late-night Delivery', "
+        "'Streaming Binge', 'Gym Grind', 'Work Lunches', 'Date Nights', 'Daily Commute', "
+        "'Subscription Creep', 'Impulse Buys', 'Happy Hour', 'Grocery Runs'.\n"
+        "Bad examples: 'Dining', 'Food Delivery', 'Transportation', 'Entertainment', "
+        "'Shopping', 'Online Shopping' — too generic or category-rehash.\n\n"
+        "You are labelling ALL clusters at once. Read ALL of them before writing any label "
+        "so that you can ensure uniqueness across the full list.\n\n"
+        "Return ONLY a JSON array of strings, one label per cluster, in the same order.\n"
+        "No explanations, no markdown, just the JSON array.\n\n"
+        f"Clusters:\n{json.dumps(payload, indent=2)}"
+    )
+    try:
+        logger.warning("Gemini cluster labelling: sending %d clusters, payload=%s", len(clusters_meta), json.dumps(payload[:2]))
+        text = _gemini_post(prompt, temperature=0.3)
+        logger.warning("Gemini cluster labelling response: %s", text[:500])
+        labels = json.loads(text)
+        if isinstance(labels, list) and len(labels) == len(clusters_meta):
+            result = [str(l).strip() or fallbacks[i] for i, l in enumerate(labels)]
+            # Deduplicate: if any label appears more than once, append a
+            # distinguishing merchant suffix to all but the first occurrence.
+            seen: dict[str, int] = {}
+            for i, lbl in enumerate(result):
+                key = lbl.lower()
+                if key in seen:
+                    merchant = clusters_meta[i]["merchants"][0] if clusters_meta[i]["merchants"] else str(i + 1)
+                    result[i] = f"{lbl} ({merchant[:12]})"
+                else:
+                    seen[key] = i
+            _gemini_label_cache[cache_key] = result
+            return result
+        logger.warning("Gemini returned %d labels for %d clusters — falling back", len(labels) if isinstance(labels, list) else -1, len(clusters_meta))
+    except Exception:
+        logger.exception("Gemini cluster label generation failed, using fallbacks")
+    return fallbacks
+
+
+def _gemini_summarize_clusters(clusters: list[dict]) -> list[str]:
+    """Generate a bullet-pointed spending summary from cluster labels and trends.
+
+    Returns a list of bullet strings (without leading dashes).
+    Falls back to a simple generated list if Gemini is unavailable.
+    """
+    def _fallback():
+        bullets = []
+        for c in clusters:
+            label = c["label"]
+            spend = f"${c['total_spend']:,.2f}"
+            trend = c.get("trend")
+            if trend and trend["direction"] == "up":
+                bullets.append(f"{label}: {spend} spent, up {trend['percent_change']}% vs prior period")
+            elif trend and trend["direction"] == "down":
+                bullets.append(f"{label}: {spend} spent, down {abs(trend['percent_change'])}% vs prior period")
+            elif trend and trend["direction"] == "new":
+                bullets.append(f"{label}: {spend} spent — new this period")
+            else:
+                bullets.append(f"{label}: {spend} spent")
+        return bullets
+
+    if not GEMINI_API_KEY:
+        return _fallback()
+
+    payload = []
+    for c in clusters:
+        entry = {
+            "label": c["label"],
+            "total_spend": c["total_spend"],
+            "transaction_count": c["transaction_count"],
+        }
+        if c.get("trend"):
+            entry["trend"] = c["trend"]
+        payload.append(entry)
+
+    prompt = (
+        "You are a personal finance assistant. Given a user's spending clusters for a time period, "
+        "write a concise, insightful bullet-point summary of their spending habits.\n\n"
+        "Rules:\n"
+        "- One bullet per cluster.\n"
+        "- Each bullet should highlight the spend amount AND give a brief, human observation about the habit "
+        "(e.g. whether it's growing, shrinking, or noteworthy).\n"
+        "- If trend data is provided, mention whether spending went up or down.\n"
+        "- Use a conversational, slightly casual tone — like a savvy friend reviewing your bank statement.\n"
+        "- Keep each bullet under 20 words.\n"
+        "- Do NOT include leading dashes or bullet characters — just the text.\n"
+        "- Return ONLY a JSON array of strings, one per cluster, in the same order.\n\n"
+        f"Clusters:\n{json.dumps(payload, indent=2)}"
+    )
+    try:
+        text = _gemini_post(prompt, temperature=0.4)
+        bullets = json.loads(text)
+        if isinstance(bullets, list) and len(bullets) == len(clusters):
+            return [str(b).strip() for b in bullets]
+        logger.warning("Gemini summary returned wrong count — falling back")
+    except Exception:
+        logger.exception("Gemini cluster summary failed, using fallback")
+    return _fallback()
 
 
 def _cluster_top_terms(members: list) -> list:
     stopwords = {"the", "and", "of", "in", "at", "to", "a", "for", "co", "llc", "inc"}
     tokens = []
     for _, row in members:
-        for field in (row["merchant_name"], row["merchant_category"], row["spending_category"], row.get("description") or ""):
+        for field in (row["merchant_name"], row["spending_category"], row.get("description") or ""):
             tokens.extend(
                 w.lower() for w in field.replace("_", " ").split()
                 if len(w) > 2 and w.lower() not in stopwords
@@ -676,12 +879,14 @@ def _build_cluster(cid: int, members: list, vectors, centroids) -> dict:
     txn_list.sort(key=lambda x: x["intra_cluster_similarity"], reverse=True)
     monthly_spend = [{"month": k, "spend": round(v, 2)} for k, v in sorted(monthly.items())]
 
-    label, majority_category = _derive_cluster_label(members)
+    fallback_label, majority_category, top_merchants = _derive_cluster_label(members)
+    top_terms = _cluster_top_terms(members)
     return {
         "cluster_id": cid,
-        "label": label,
+        "label": fallback_label,          # overwritten by Gemini after all clusters built
         "majority_category": majority_category,
-        "top_terms": _cluster_top_terms(members),
+        "top_merchants": top_merchants,   # used by Gemini; not sent to frontend
+        "top_terms": top_terms,
         "representative_transactions": txn_list[:3],
         "transaction_count": len(members),
         "total_spend": round(sum(abs(float(r["amount"])) for _, r in members), 2),
@@ -694,10 +899,9 @@ def _build_cluster(cid: int, members: list, vectors, centroids) -> dict:
 async def _fetch_transactions_in_window(conn, user_id: int, start_dt, end_dt):
     if start_dt and end_dt:
         return await conn.fetch(
-            """SELECT transaction_id, timestamp, amount, merchant_name,
-                      merchant_category, spending_category, transaction_type,
-                      payment_method, city, country, currency, description, embedding
-               FROM transactions
+            """SELECT transaction_id, timestamp, amount, merchant_name, spending_category,
+                      quantity, country, item_description AS description, embedding
+               FROM transactions_2
                WHERE user_id = $1 AND embedding IS NOT NULL
                  AND timestamp >= $2 AND timestamp <= $3
                ORDER BY timestamp DESC""",
@@ -705,20 +909,18 @@ async def _fetch_transactions_in_window(conn, user_id: int, start_dt, end_dt):
         )
     elif start_dt:
         return await conn.fetch(
-            """SELECT transaction_id, timestamp, amount, merchant_name,
-                      merchant_category, spending_category, transaction_type,
-                      payment_method, city, country, currency, description, embedding
-               FROM transactions
+            """SELECT transaction_id, timestamp, amount, merchant_name, spending_category,
+                      quantity, country, item_description AS description, embedding
+               FROM transactions_2
                WHERE user_id = $1 AND embedding IS NOT NULL AND timestamp >= $2
                ORDER BY timestamp DESC""",
             user_id, start_dt,
         )
     else:
         return await conn.fetch(
-            """SELECT transaction_id, timestamp, amount, merchant_name,
-                      merchant_category, spending_category, transaction_type,
-                      payment_method, city, country, currency, description, embedding
-               FROM transactions
+            """SELECT transaction_id, timestamp, amount, merchant_name, spending_category,
+                      quantity, country, item_description AS description, embedding
+               FROM transactions_2
                WHERE user_id = $1 AND embedding IS NOT NULL
                ORDER BY timestamp DESC""",
             user_id,
@@ -726,7 +928,6 @@ async def _fetch_transactions_in_window(conn, user_id: int, start_dt, end_dt):
 
 
 async def _run_kmeans(vectors, k: int):
-    import asyncio
     loop = asyncio.get_event_loop()
     km = await loop.run_in_executor(
         None,
@@ -737,7 +938,10 @@ async def _run_kmeans(vectors, k: int):
 
 async def _count_user_transactions(user_id: int) -> int:
     async with pool.acquire() as conn:
-        return await conn.fetchval("SELECT COUNT(*) FROM transactions WHERE user_id = $1", user_id)
+        return await conn.fetchval(
+            "SELECT COUNT(*) FROM transactions_2 WHERE user_id = $1",
+            user_id,
+        )
 
 
 # --- General Routes ---
@@ -809,40 +1013,51 @@ async def delete_item(item_id: int):
 async def create_transaction(txn: TransactionCreate, user: dict = Depends(get_current_user)):
     txn_id = uuid.uuid4()
     ts = datetime.now(timezone.utc)
-    embed_text = " ".join(filter(None, [
-        txn.merchant_name, txn.merchant_category,
-        txn.spending_category, txn.description,
-    ]))
+    item_description = txn.description or txn.merchant_name
+    embed_text = " ".join(filter(None, [txn.merchant_name, txn.spending_category, item_description]))
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            """INSERT INTO transactions (
+            """INSERT INTO transactions_2 (
                 transaction_id, user_id, timestamp, amount, merchant_name,
-                merchant_category, spending_category, transaction_type,
-                payment_method, city, country, currency, description
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-            RETURNING *""",
+                spending_category, item_description, quantity, country
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            RETURNING transaction_id, user_id, timestamp, amount, merchant_name,
+                      spending_category, quantity, country, item_description AS description""",
             txn_id, int(user["user_id"]), ts, txn.amount, txn.merchant_name,
-            txn.merchant_category, txn.spending_category, txn.transaction_type,
-            txn.payment_method, txn.city, txn.country, txn.currency,
-            txn.description,
+            txn.spending_category, item_description, 1, txn.country,
         )
         try:
+            vec = _embed_text(embed_text)
+            vec_str = f"[{','.join(str(x) for x in vec)}]"
             await conn.execute(
-                """UPDATE transactions
-                   SET embedding = google_ml.embedding('text-embedding-005', $1)::vector
-                   WHERE transaction_id = $2""",
-                embed_text, txn_id,
+                "UPDATE transactions_2 SET embedding = $1::vector WHERE transaction_id = $2",
+                vec_str, txn_id,
             )
         except Exception:
             logger.exception("Failed to generate embedding for transaction %s", txn_id)
         return _serialize_transaction(row)
 
 
+@app.get("/api/transactions/categories")
+async def fetch_categories(user: dict = Depends(get_current_user)):
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """SELECT DISTINCT spending_category
+               FROM transactions_2
+               WHERE user_id = $1
+               ORDER BY spending_category""",
+            int(user["user_id"]),
+        )
+    return [r["spending_category"] for r in rows]
+
+
 @app.get("/api/transactions/category/{spending_category}")
 async def fetch_transactions_by_category(spending_category: str, user: dict = Depends(get_current_user)):
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            """SELECT * FROM transactions
+            """SELECT transaction_id, user_id, timestamp, amount, merchant_name, spending_category,
+                      quantity, country, item_description AS description
+               FROM transactions_2
                WHERE user_id = $1 AND LOWER(spending_category) = LOWER($2)
                ORDER BY timestamp DESC""",
             int(user["user_id"]), spending_category,
@@ -856,7 +1071,9 @@ async def fetch_current_month(user: dict = Depends(get_current_user)):
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            """SELECT * FROM transactions
+            """SELECT transaction_id, user_id, timestamp, amount, merchant_name, spending_category,
+                      quantity, country, item_description AS description
+               FROM transactions_2
                WHERE user_id = $1 AND timestamp >= $2
                ORDER BY timestamp DESC""",
             int(user["user_id"]), month_start,
@@ -874,7 +1091,9 @@ async def fetch_previous_month(user: dict = Depends(get_current_user)):
         prev_month_start = current_month_start.replace(month=current_month_start.month - 1)
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            """SELECT * FROM transactions
+            """SELECT transaction_id, user_id, timestamp, amount, merchant_name, spending_category,
+                      quantity, country, item_description AS description
+               FROM transactions_2
                WHERE user_id = $1 AND timestamp >= $2 AND timestamp < $3
                ORDER BY timestamp DESC""",
             int(user["user_id"]), prev_month_start, current_month_start,
@@ -886,7 +1105,9 @@ async def fetch_previous_month(user: dict = Depends(get_current_user)):
 async def fetch_n_transactions(limit: int = Query(default=10, ge=1, le=500), user: dict = Depends(get_current_user)):
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            """SELECT * FROM transactions
+            """SELECT transaction_id, user_id, timestamp, amount, merchant_name, spending_category,
+                      quantity, country, item_description AS description
+               FROM transactions_2
                WHERE user_id = $1
                ORDER BY timestamp DESC
                LIMIT $2""",
@@ -898,30 +1119,43 @@ async def fetch_n_transactions(limit: int = Query(default=10, ge=1, le=500), use
 @app.get("/api/transactions/search")
 async def search_transactions(
     q: str = Query(..., min_length=1),
-    limit: int = Query(default=10, ge=1, le=50),
+    limit: int = Query(default=50, ge=1, le=200),
+    min_similarity: float = Query(default=0.55, ge=0.0, le=1.0),
     user: dict = Depends(get_current_user),
 ):
     """Semantic similarity search over the authenticated user's transactions."""
+    try:
+        vec = _embed_text(q.strip())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Embedding query failed: {e}")
+    vec_str = f"[{','.join(str(x) for x in vec)}]"
     async with pool.acquire() as conn:
         try:
             rows = await conn.fetch(
-                """SELECT *,
-                       1 - (embedding <=> google_ml.embedding('text-embedding-005', $1)::vector) AS similarity
-                   FROM transactions
-                   WHERE user_id = $2
-                     AND embedding IS NOT NULL
-                   ORDER BY embedding <=> google_ml.embedding('text-embedding-005', $1)::vector
+                """SELECT transaction_id, timestamp, amount, merchant_name,
+                          spending_category, quantity, country, item_description AS description,
+                          1 - (embedding <=> $1::vector) AS similarity
+                   FROM transactions_2
+                   WHERE user_id = $2 AND embedding IS NOT NULL
+                   ORDER BY similarity DESC
                    LIMIT $3""",
-                q.strip(), int(user["user_id"]), limit,
+                vec_str, int(user["user_id"]), limit,
             )
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Semantic search failed: {e}")
     results = []
     for r in rows:
-        d = _serialize_transaction(r)
-        d["similarity"] = float(r["similarity"])
+        d = dict(r)
+        d["transaction_id"] = str(d["transaction_id"])
+        d["timestamp"] = d["timestamp"].isoformat()
+        d["amount"] = float(d["amount"])
+        d["similarity"] = float(d["similarity"])
         results.append(d)
-    return results
+    # Filter by similarity threshold, but always return at least 5 results
+    filtered = [r for r in results if r["similarity"] >= min_similarity]
+    if len(filtered) < 5:
+        filtered = results[:max(5, len(filtered))]
+    return filtered
 @app.get("/api/transactions/clusters")
 async def cluster_transactions(
     k: int = Query(default=5, ge=3, le=10),
@@ -997,6 +1231,21 @@ async def cluster_transactions(
                 else:
                     c["trend"] = {"direction": "new", "percent_change": None, "prev_spend": None}
 
+    # Generate semantic labels via Gemini for all current clusters in one call.
+    # Run in executor so the blocking requests.post doesn't stall the event loop.
+    all_clusters_for_labelling = current_clusters + (previous_clusters or [])
+    clusters_meta = [
+        {"merchants": c["top_merchants"], "terms": c["top_terms"], "majority_category": c["majority_category"]}
+        for c in all_clusters_for_labelling
+    ]
+    loop = asyncio.get_event_loop()
+    gemini_labels = await loop.run_in_executor(None, _gemini_label_clusters, clusters_meta)
+    for i, c in enumerate(all_clusters_for_labelling):
+        c["label"] = gemini_labels[i]
+        c.pop("top_merchants", None)  # internal field, not needed by frontend
+
+    summary_bullets = await loop.run_in_executor(None, _gemini_summarize_clusters, current_clusters)
+
     return {
         "k": k,
         "time_range": tr_label,
@@ -1004,6 +1253,7 @@ async def cluster_transactions(
         "end_date": end_dt.isoformat() if end_dt else None,
         "total_transactions": total_all,
         "transactions_with_embeddings": n,
+        "summary": summary_bullets,
         "clusters": current_clusters,
         "previous_clusters": previous_clusters,
     }
@@ -1023,33 +1273,38 @@ async def semantic_filter_transactions(
     concept = category.strip()
     start_dt, end_dt, tr_label = _resolve_time_range(time_range, start_date, end_date)
 
+    try:
+        vec = _embed_text(concept)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Embedding query failed: {e}")
+    vec_str = f"[{','.join(str(x) for x in vec)}]"
+
     time_clause = ""
     time_params: list = []
     if start_dt and end_dt:
-        time_clause = "AND t.timestamp >= $5 AND t.timestamp <= $6"
+        time_clause = "AND t.timestamp >= $4 AND t.timestamp <= $5"
         time_params = [start_dt, end_dt]
     elif start_dt:
-        time_clause = "AND t.timestamp >= $5"
+        time_clause = "AND t.timestamp >= $4"
         time_params = [start_dt]
 
-    base_params = [user_id, concept, threshold, limit] + time_params
+    base_params = [user_id, vec_str, threshold] + time_params + [limit]
+    limit_pos = f"${len(base_params)}"
 
     async with pool.acquire() as conn:
         try:
             rows = await conn.fetch(
-                f"""WITH concept_vec AS (
-                       SELECT google_ml.embedding('text-embedding-005', $2)::vector AS vec
-                   )
-                   SELECT t.*,
-                          1 - (t.embedding <=> cv.vec) AS similarity,
-                          COUNT(*) OVER () AS total_matched
-                   FROM transactions t, concept_vec cv
-                   WHERE t.user_id = $1
-                     AND t.embedding IS NOT NULL
-                     AND 1 - (t.embedding <=> cv.vec) >= $3
-                     {time_clause}
-                   ORDER BY similarity DESC
-                   LIMIT $4""",
+                f"""SELECT transaction_id, timestamp, amount, merchant_name, spending_category,
+                           quantity, country, item_description AS description,
+                           1 - (embedding <=> $2::vector) AS similarity,
+                           COUNT(*) OVER () AS total_matched
+                    FROM transactions_2 t
+                    WHERE t.user_id = $1
+                      AND t.embedding IS NOT NULL
+                      AND 1 - (t.embedding <=> $2::vector) >= $3
+                      {time_clause}
+                    ORDER BY similarity DESC
+                    LIMIT {limit_pos}""",
                 *base_params,
             )
         except Exception as e:
@@ -1065,10 +1320,9 @@ async def semantic_filter_transactions(
     concept_words = set(concept.lower().split())
     cat_counts: Counter = Counter()
     for r in rows:
-        for field in (r["spending_category"], r["merchant_category"]):
-            val = field.replace("_", " ").lower()
-            if not any(w in val for w in concept_words):
-                cat_counts[val] += 1
+        val = r["spending_category"].replace("_", " ").lower()
+        if not any(w in val for w in concept_words):
+            cat_counts[val] += 1
     suggested_concepts = [k for k, _ in cat_counts.most_common(5) if k]
 
     return {
@@ -1087,7 +1341,9 @@ async def semantic_filter_transactions(
 async def fetch_all_transactions(user: dict = Depends(get_current_user)):
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            """SELECT * FROM transactions
+            """SELECT transaction_id, user_id, timestamp, amount, merchant_name, spending_category,
+                      quantity, country, item_description AS description
+               FROM transactions_2
                WHERE user_id = $1
                ORDER BY timestamp DESC""",
             int(user["user_id"]),
@@ -1151,7 +1407,7 @@ async def nl2sql_generate(req: NL2SQLGenerateRequest):
         try:
             row = await conn.fetchrow(
                 "SELECT alloydb_ai_nl.get_sql($1::text, $2::text, '{}'::json) ->> 'sql' AS sql",
-                "app_config",
+                "app_config_v2",
                 req.question.strip(),
             )
         except Exception as e:
@@ -1210,8 +1466,7 @@ async def fetch_budget_usage():
                 COALESCE(SUM(ABS(t.amount)), 0) AS total_spent,
                 bp.amount                        AS budget_limit
             FROM "BudgetPrefs" bp
-            LEFT JOIN transactions t
-                -- Match on category name (case-insensitive) and restrict to current month
+            LEFT JOIN transactions_2 t
                 ON LOWER(t.spending_category) = LOWER(bp.category)
                AND t.timestamp >= $1
             GROUP BY bp.category, bp.amount
@@ -1304,25 +1559,8 @@ def _generate_monthly_llm_comments(year_month: str, total_spent: float, category
         "- Keep tone neutral and helpful.\n"
         f"Input JSON:\n{compact_payload}"
     )
-    url = (
-        "https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
-    )
     try:
-        resp = requests.post(
-            url,
-            json={
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {
-                    "temperature": 0.2,
-                    "responseMimeType": "application/json",
-                },
-            },
-            timeout=40,
-        )
-        resp.raise_for_status()
-        body: dict[str, Any] = resp.json()
-        text = body["candidates"][0]["content"]["parts"][0]["text"]
+        text = _gemini_post(prompt, temperature=0.2)
         parsed = json.loads(text)
         comments = str(parsed.get("comments", "")).strip()
         suggestions = parsed.get("suggestions", [])
@@ -1349,7 +1587,7 @@ async def generate_monthly_report(
     async with pool.acquire() as conn:
         spend_row = await conn.fetchrow(
             """SELECT COALESCE(SUM(ABS(amount)), 0) AS total_spent
-               FROM transactions
+               FROM transactions_2
                WHERE user_id = $1
                  AND amount < 0
                  AND timestamp >= $2
@@ -1358,7 +1596,7 @@ async def generate_monthly_report(
         )
         category_rows_raw = await conn.fetch(
             """SELECT spending_category AS category, COALESCE(SUM(ABS(amount)), 0) AS total_spent
-               FROM transactions
+               FROM transactions_2
                WHERE user_id = $1
                  AND amount < 0
                  AND timestamp >= $2
@@ -1370,7 +1608,7 @@ async def generate_monthly_report(
         )
         merchant_rows_raw = await conn.fetch(
             """SELECT merchant_name, COALESCE(SUM(ABS(amount)), 0) AS total_spent, COUNT(*) AS transaction_count
-               FROM transactions
+               FROM transactions_2
                WHERE user_id = $1
                  AND amount < 0
                  AND timestamp >= $2
@@ -1472,6 +1710,19 @@ async def list_monthly_reports(user: dict = Depends(get_current_user)):
         }
         for row in rows
     ]
+
+
+@app.delete("/api/reports/monthly/{year_month}", status_code=204)
+async def delete_monthly_report(year_month: str, user: dict = Depends(get_current_user)):
+    normalized = _parse_year_month(year_month)
+    user_id = int(user["user_id"])
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            "DELETE FROM monthly_reports WHERE user_id = $1 AND year_month = $2",
+            user_id, normalized,
+        )
+    if result == "DELETE 0":
+        raise HTTPException(status_code=404, detail="Monthly report not found")
 
 
 @app.get("/api/reports/monthly/{year_month}")

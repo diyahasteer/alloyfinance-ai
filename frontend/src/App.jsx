@@ -6,56 +6,9 @@ import NL2SQLPanel from "./components/NL2SQLPanel";
 import MonthlyReportsPanel from "./components/MonthlyReportsPanel";
 import SemanticClusters from "./components/SemanticClusters";
 import { searchApi } from "./api/search";
-import { clustersApi } from "./api/clusters";
+import { transactionsApi } from "./api/transactions";
 
 const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
-
-// Behavioral/emotional concept chips — showcases embedding power since
-// there is no hard category mapping for these concepts.
-const CONCEPT_CHIPS = [
-  "impulse purchases",
-  "self-care spending",
-  "social spending",
-  "productive work tools",
-  "comfort food",
-  "recurring habits",
-  "guilty pleasures",
-  "one-time splurges",
-];
-
-const SF_TIME_CHIPS = [
-  { label: "Last 7d",   value: "7d"  },
-  { label: "Last 30d",  value: "30d" },
-  { label: "Last 3mo",  value: "90d" },
-  { label: "All time",  value: "all" },
-];
-
-const THRESHOLD_LABELS = [
-  { value: 0.50, label: "Broad"       },
-  { value: 0.70, label: "Balanced"    },
-  { value: 0.85, label: "Strict"      },
-  { value: 0.95, label: "Very Strict" },
-];
-
-function thresholdLabel(v) {
-  return [...THRESHOLD_LABELS].reverse().find((t) => v >= t.value)?.label ?? "Broad";
-}
-
-const CATEGORIES = [
-  "groceries",
-  "dining",
-  "shopping",
-  "subscriptions",
-  "utilities",
-  "rent",
-  "healthcare",
-  "transportation",
-  "entertainment",
-  "income",
-];
-
-const TRANSACTION_TYPES = ["debit", "credit", "transfer", "refund"];
-const PAYMENT_METHODS = ["credit_card", "debit_card", "bank_transfer", "cash", "mobile_wallet"];
 
 function useAuth() {
   const [user, setUser] = useState(null);
@@ -256,20 +209,16 @@ function Dashboard({ auth }) {
   const [tab, setTab] = useState("transactions");
   const [showForm, setShowForm] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState("");
+  const [categories, setCategories] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState(null);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState("");
-  const [typeFilter, setTypeFilter] = useState("");
-  const [paymentFilter, setPaymentFilter] = useState("");
+  const [searchPage, setSearchPage] = useState(0);
 
-  // Semantic filter state
-  const [sfQuery, setSfQuery] = useState("");
-  const [sfThreshold, setSfThreshold] = useState(0.75);
-  const [sfTimeRange, setSfTimeRange] = useState("all");
-  const [sfResults, setSfResults] = useState(null);
-  const [sfLoading, setSfLoading] = useState(false);
-  const [sfError, setSfError] = useState("");
+  useEffect(() => {
+    transactionsApi.getCategories().then(setCategories).catch(() => {});
+  }, []);
 
   const handleCategoryChange = (e) => {
     const val = e.target.value;
@@ -283,11 +232,9 @@ function Dashboard({ auth }) {
     if (activeFilter !== "all-time") return transactions;
     return transactions.filter((t) => {
       if (categoryFilter && t.spending_category !== categoryFilter) return false;
-      if (typeFilter && t.transaction_type !== typeFilter) return false;
-      if (paymentFilter && t.payment_method !== paymentFilter) return false;
       return true;
     });
-  }, [activeFilter, transactions, categoryFilter, typeFilter, paymentFilter]);
+  }, [activeFilter, transactions, categoryFilter]);
 
   const handleCreate = async (txn) => {
     await createTransaction(txn);
@@ -300,6 +247,7 @@ function Dashboard({ auth }) {
     setSearchLoading(true);
     setSearchError("");
     setSearchResults(null);
+    setSearchPage(0);
     try {
       const results = await searchApi.search(searchQuery.trim());
       setSearchResults(results);
@@ -309,23 +257,6 @@ function Dashboard({ auth }) {
       setSearchLoading(false);
     }
   };
-
-  const handleSemanticFilter = useCallback(async (concept) => {
-    const q = (concept ?? sfQuery).trim();
-    if (!q) return;
-    setSfLoading(true);
-    setSfError("");
-    setSfResults(null);
-    try {
-      const timeOpts = sfTimeRange !== "all" ? { timeRange: sfTimeRange } : {};
-      const data = await clustersApi.semanticFilter({ category: q, threshold: sfThreshold, ...timeOpts });
-      setSfResults(data);
-    } catch (err) {
-      setSfError(err.message);
-    } finally {
-      setSfLoading(false);
-    }
-  }, [sfQuery, sfThreshold, sfTimeRange]);
 
   const filterLabel = () => {
     if (activeFilter === "recent") return "Recent transactions";
@@ -415,18 +346,47 @@ function Dashboard({ auth }) {
               </button>
             </form>
             {searchError && <p className="global-error">{searchError}</p>}
-            {searchResults !== null && (
-              <>
-                <div className="table-header" style={{ marginTop: "0.5rem" }}>
-                  <span className="txn-count">
-                    {searchResults.length === 0
-                      ? "No similar transactions found"
-                      : `Top ${searchResults.length} similar transactions`}
-                  </span>
-                </div>
-                <TransactionTable transactions={searchResults} loading={false} />
-              </>
-            )}
+            {searchResults !== null && (() => {
+              const PAGE_SIZE = 10;
+              const totalPages = Math.ceil(searchResults.length / PAGE_SIZE);
+              const pageSlice = searchResults.slice(searchPage * PAGE_SIZE, (searchPage + 1) * PAGE_SIZE);
+              return (
+                <>
+                  <div className="table-header" style={{ marginTop: "0.5rem" }}>
+                    <span className="txn-count">
+                      {searchResults.length === 0
+                        ? "No similar transactions found"
+                        : `${searchResults.length} similar transaction${searchResults.length !== 1 ? "s" : ""}`}
+                    </span>
+                    {totalPages > 1 && (
+                      <span style={{ fontSize: "0.82rem", color: "#64748b" }}>
+                        Page {searchPage + 1} of {totalPages}
+                      </span>
+                    )}
+                  </div>
+                  <TransactionTable transactions={pageSlice} loading={false} />
+                  {totalPages > 1 && (
+                    <div className="pagination-row">
+                      <button
+                        className="btn btn-filter"
+                        onClick={() => setSearchPage((p) => p - 1)}
+                        disabled={searchPage === 0}
+                      >
+                        ← Prev
+                      </button>
+                      <span className="pagination-info">{searchPage + 1} / {totalPages}</span>
+                      <button
+                        className="btn btn-filter"
+                        onClick={() => setSearchPage((p) => p + 1)}
+                        disabled={searchPage >= totalPages - 1}
+                      >
+                        Next →
+                      </button>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </section>
         )}
 
@@ -436,86 +396,37 @@ function Dashboard({ auth }) {
               <div className="filter-group">
                 <button
                   className={`btn btn-filter ${activeFilter === "recent" ? "active" : ""}`}
-                  onClick={() => {
-                    setCategoryFilter("");
-                    setTypeFilter("");
-                    setPaymentFilter("");
-                    fetchRecent();
-                  }}
+                  onClick={() => { setCategoryFilter(""); fetchRecent(); }}
                 >
                   Recent
                 </button>
                 <button
                   className={`btn btn-filter ${activeFilter === "all-time" ? "active" : ""}`}
-                  onClick={() => {
-                    setCategoryFilter("");
-                    setTypeFilter("");
-                    setPaymentFilter("");
-                    fetchAll();
-                  }}
+                  onClick={() => { setCategoryFilter(""); fetchAll(); }}
                 >
                   All Time
                 </button>
                 <button
                   className={`btn btn-filter ${activeFilter === "current-month" ? "active" : ""}`}
-                  onClick={() => {
-                    setCategoryFilter("");
-                    setTypeFilter("");
-                    setPaymentFilter("");
-                    fetchCurrentMonth();
-                  }}
+                  onClick={() => { setCategoryFilter(""); fetchCurrentMonth(); }}
                 >
                   This Month
                 </button>
                 <button
                   className={`btn btn-filter ${activeFilter === "previous-month" ? "active" : ""}`}
-                  onClick={() => {
-                    setCategoryFilter("");
-                    setTypeFilter("");
-                    setPaymentFilter("");
-                    fetchPreviousMonth();
-                  }}
+                  onClick={() => { setCategoryFilter(""); fetchPreviousMonth(); }}
                 >
                   Last Month
                 </button>
 
                 <select className="category-select" value={categoryFilter} onChange={handleCategoryChange}>
                   <option value="">All Categories</option>
-                  {CATEGORIES.map((c) => (
+                  {categories.map((c) => (
                     <option key={c} value={c}>
                       {c}
                     </option>
                   ))}
                 </select>
-
-                {activeFilter === "all-time" && (
-                  <>
-                    <select
-                      className="category-select"
-                      value={typeFilter}
-                      onChange={(e) => setTypeFilter(e.target.value)}
-                    >
-                      <option value="">All Types</option>
-                      {TRANSACTION_TYPES.map((t) => (
-                        <option key={t} value={t}>
-                          {t}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      className="category-select"
-                      value={paymentFilter}
-                      onChange={(e) => setPaymentFilter(e.target.value)}
-                    >
-                      <option value="">All Payments</option>
-                      {PAYMENT_METHODS.map((m) => (
-                        <option key={m} value={m}>
-                          {m.replace(/_/g, " ")}
-                        </option>
-                      ))}
-                    </select>
-                  </>
-                )}
               </div>
 
               <button className="btn btn-primary" onClick={() => setShowForm((s) => !s)}>
@@ -525,7 +436,7 @@ function Dashboard({ auth }) {
 
             {showForm && (
               <section className="card">
-                <TransactionForm onSubmit={handleCreate} />
+                <TransactionForm onSubmit={handleCreate} categories={categories} />
               </section>
             )}
 
@@ -539,109 +450,6 @@ function Dashboard({ auth }) {
               <TransactionTable transactions={filteredTransactions} loading={loading} />
             </section>
 
-            <section className="card">
-              <div className="table-header">
-                <h2>Semantic Filter</h2>
-              </div>
-
-              {/* Time chips */}
-              <div className="filter-group" style={{ marginBottom: "0.6rem" }}>
-                {SF_TIME_CHIPS.map((chip) => (
-                  <button
-                    key={chip.value}
-                    className={`btn btn-filter ${sfTimeRange === chip.value ? "active" : ""}`}
-                    onClick={() => setSfTimeRange(chip.value)}
-                  >
-                    {chip.label}
-                  </button>
-                ))}
-              </div>
-
-              {/* Free text + button */}
-              <div className="semantic-filter-row">
-                <input
-                  className="category-select"
-                  style={{ flex: 1 }}
-                  type="text"
-                  placeholder='e.g. "impulse purchases" or "work tools"'
-                  value={sfQuery}
-                  onChange={(e) => { setSfQuery(e.target.value); if (!e.target.value) setSfResults(null); }}
-                  onKeyDown={(e) => { if (e.key === "Enter") handleSemanticFilter(); }}
-                />
-                <button
-                  className="btn btn-primary"
-                  onClick={() => handleSemanticFilter()}
-                  disabled={sfLoading || !sfQuery.trim()}
-                >
-                  {sfLoading ? "Filtering…" : "Filter"}
-                </button>
-              </div>
-
-              {/* Behavioral concept chips */}
-              <div className="nl-chips" style={{ marginTop: "0.4rem" }}>
-                {CONCEPT_CHIPS.map((chip) => (
-                  <button
-                    key={chip}
-                    className="nl-chip"
-                    onClick={() => { setSfQuery(chip); handleSemanticFilter(chip); }}
-                  >
-                    {chip}
-                  </button>
-                ))}
-              </div>
-
-              {/* Threshold slider with labels */}
-              <div className="semantic-threshold-row">
-                <label className="cluster-slider-label">
-                  <span>
-                    Similarity: <strong>{thresholdLabel(sfThreshold)}</strong>{" "}
-                    <span style={{ color: "#94a3b8" }}>({(sfThreshold * 100).toFixed(0)}%)</span>
-                  </span>
-                  <input
-                    type="range"
-                    min={50}
-                    max={95}
-                    step={5}
-                    value={sfThreshold * 100}
-                    onChange={(e) => setSfThreshold(Number(e.target.value) / 100)}
-                    className="cluster-slider"
-                  />
-                </label>
-              </div>
-
-              {sfError && <p className="global-error">{sfError}</p>}
-
-              {sfResults && (
-                <>
-                  <div className="table-header" style={{ marginTop: "0.75rem" }}>
-                    <span className="txn-count">
-                      {sfResults.total_matched === 0
-                        ? "No matching transactions"
-                        : `Showing ${sfResults.transactions.length} of ${sfResults.total_matched} above ${thresholdLabel(sfThreshold)} threshold`}
-                    </span>
-                  </div>
-
-                  {sfResults.suggested_concepts?.length > 0 && (
-                    <div style={{ marginBottom: "0.5rem" }}>
-                      <span style={{ fontSize: "0.8rem", color: "#64748b" }}>Try also: </span>
-                      <div className="nl-chips" style={{ display: "inline-flex", flexWrap: "wrap" }}>
-                        {sfResults.suggested_concepts.map((c) => (
-                          <button
-                            key={c}
-                            className="nl-chip"
-                            onClick={() => { setSfQuery(c); handleSemanticFilter(c); }}
-                          >
-                            {c}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  <TransactionTable transactions={sfResults.transactions} loading={false} />
-                </>
-              )}
-            </section>
           </>
         )}
       </main>

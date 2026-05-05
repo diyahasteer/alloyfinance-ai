@@ -57,4 +57,12 @@ export const transactionsApi = {
     if (!res.ok) throw new Error("Failed to fetch all transactions");
     return res.json();
   },
+
+  getCategories: async () => {
+    const res = await fetch(`${BASE_URL}/api/transactions/categories`, {
+      headers: authHeaders(),
+    });
+    if (!res.ok) throw new Error("Failed to fetch categories");
+    return res.json();
+  },
 };
