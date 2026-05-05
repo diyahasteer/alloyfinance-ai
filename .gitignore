@@ -49,3 +49,6 @@ backend/app/data/*.csv
 secrets/
 k8s/secrets/
 k8s/secrets.yaml
+
+
+backend/transaction_data.csv

@@ -221,19 +221,27 @@ def generate_monthly_report_comments_with_gemini(
     compact_payload = {
         "month": year_month,
         "total_spent_usd": round(total_spent, 2),
-        "top_categories": category_rows[:6],
-        "top_merchants": merchant_rows[:6],
+        "top_categories": category_rows[:8],
+        "top_merchants": merchant_rows[:8],
     }
     prompt = (
-        "You are a personal finance assistant. "
-        "Given JSON monthly spending data, produce concise report output.\n"
-        "Return ONLY valid JSON with keys:\n"
-        "- comments: string (2-3 sentences, clear and specific)\n"
-        "- suggestions: array of 3 strings with practical savings actions\n"
+        "You are a personal finance coach helping someone understand and improve their spending habits.\n"
+        "Given monthly spending data, produce a detailed, actionable financial report.\n"
+        "Return ONLY valid JSON with exactly these keys:\n"
+        "- comments: string (3-4 sentences summarizing the month: total context, biggest categories, notable patterns, overall financial health signal)\n"
+        "- headline: string (one punchy sentence — a single key takeaway for the month, e.g. 'Dining out drove 40% of your spending this month')\n"
+        "- suggestions: array of exactly 3 objects, each with:\n"
+        "    - title: string (short action label, e.g. 'Cut subscription overlap')\n"
+        "    - rationale: string (1-2 sentences explaining why this matters and what to do specifically, with dollar figures)\n"
+        "    - estimated_savings_usd: number (realistic monthly savings estimate in USD)\n"
+        "    - difficulty: string — one of 'Easy', 'Medium', 'Hard'\n"
+        "    - impact: string — one of 'Low', 'Medium', 'High'\n"
+        "- watch_items: array of 2-3 strings (spending behaviors worth monitoring, e.g. 'Frequent small purchases at coffee shops added up to $X')\n"
         "Rules:\n"
-        "- Use only facts from the JSON.\n"
-        "- Mention exact dollar figures when present.\n"
-        "- Keep tone neutral and helpful.\n"
+        "- Anchor every claim to exact dollar figures from the data.\n"
+        "- Prioritize suggestions by highest realistic impact.\n"
+        "- Be specific: name the category or merchant, not generic advice.\n"
+        "- Keep tone direct, friendly, and non-judgmental.\n"
         f"Input JSON:\n{compact_payload}"
     )
     body, response_bytes = post_vertex_generate_content(
@@ -251,7 +259,7 @@ def generate_monthly_report_comments_with_gemini(
     suggestions = parsed.get("suggestions", [])
     if not comments or not isinstance(suggestions, list):
         raise ValueError("Monthly report response did not include comments and suggestions")
-    return comments, [str(s).strip() for s in suggestions if str(s).strip()][:3], response_bytes
+    return comments, suggestions[:3], response_bytes
 
 
 def generate_finance_insight_with_gemini(
