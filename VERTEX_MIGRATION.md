@@ -99,12 +99,14 @@ Other existing values (`DATABASE_URL`, `JWT_SECRET`, etc.) remain unchanged.
 
 Backend container uses host ADC credentials through compose mount:
 
-- Host path: `~/.config/gcloud`
+- Host path: `${HOME}/.config/gcloud`
 - Container path: `/root/.config/gcloud`
 - `GOOGLE_APPLICATION_CREDENTIALS` points to:
   `/root/.config/gcloud/application_default_credentials.json`
 
 So each teammate must run `gcloud auth application-default login` on their own machine.
+Also verify this file exists on the host before starting Docker:
+`${HOME}/.config/gcloud/application_default_credentials.json`
 
 ---
 
@@ -222,4 +224,3 @@ Each teammate should complete this checklist once:
 - For Vertex path in this project, do **not** use `GEMINI_API_KEY`.
 - Any legacy AI Studio code paths (if still present) may still reference API keys.
 - Customer router path now uses Vertex auth and endpoint.
-
