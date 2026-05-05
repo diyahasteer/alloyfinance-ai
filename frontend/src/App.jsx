@@ -8,45 +8,16 @@ import CustomerPanel from "./components/CustomerPanel";
 import MonthlyReportsPanel from "./components/MonthlyReportsPanel";
 import SemanticClusters from "./components/SemanticClusters";
 import PerformanceDashboard from "./components/PerformanceDashboard";
-import { clustersApi } from "./api/clusters";
 import { searchApi } from "./api/search";
 import { transactionsApi } from "./api/transactions";
 import { catBarColor } from "./utils/categoryColors";
 
 const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
-const CONCEPT_CHIPS = [
-  "impulse purchases",
-  "self-care spending",
-  "social spending",
-  "productive work tools",
-  "comfort food",
-  "recurring habits",
-  "guilty pleasures",
-  "one-time splurges",
-];
-
-const SF_TIME_CHIPS = [
-  { label: "Last 7d", value: "7d" },
-  { label: "Last 30d", value: "30d" },
-  { label: "Last 3mo", value: "90d" },
-  { label: "All time", value: "all" },
-];
-
-const THRESHOLD_LABELS = [
-  { value: 0.5, label: "Broad" },
-  { value: 0.7, label: "Balanced" },
-  { value: 0.85, label: "Strict" },
-  { value: 0.95, label: "Very Strict" },
-];
-
 function catColor(cat) { return catBarColor(cat); }
 function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
 function fmt(n) {
   return Math.abs(n).toLocaleString("en-US", { style: "currency", currency: "USD" });
-}
-function thresholdLabel(v) {
-  return [...THRESHOLD_LABELS].reverse().find((t) => v >= t.value)?.label ?? "Broad";
 }
 
 function useAuth() {
@@ -291,12 +262,6 @@ function Dashboard({ auth }) {
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState("");
   const [searchPage, setSearchPage] = useState(0);
-  const [sfQuery, setSfQuery] = useState("");
-  const [sfThreshold, setSfThreshold] = useState(0.75);
-  const [sfTimeRange, setSfTimeRange] = useState("all");
-  const [sfResults, setSfResults] = useState(null);
-  const [sfLoading, setSfLoading] = useState(false);
-  const [sfError, setSfError] = useState("");
 
   useEffect(() => {
     transactionsApi.getCategories().then(setCategories).catch(() => {});
@@ -383,27 +348,6 @@ function Dashboard({ auth }) {
       setSearchLoading(false);
     }
   };
-
-  const handleSemanticFilter = useCallback(async (concept) => {
-    const query = (concept ?? sfQuery).trim();
-    if (!query) return;
-    setSfLoading(true);
-    setSfError("");
-    setSfResults(null);
-    try {
-      const timeOpts = sfTimeRange !== "all" ? { timeRange: sfTimeRange } : {};
-      const data = await clustersApi.semanticFilter({
-        category: query,
-        threshold: sfThreshold,
-        ...timeOpts,
-      });
-      setSfResults(data);
-    } catch (err) {
-      setSfError(err.message);
-    } finally {
-      setSfLoading(false);
-    }
-  }, [sfQuery, sfThreshold, sfTimeRange]);
 
   return (
     <div className="app-shell">
@@ -524,117 +468,6 @@ function Dashboard({ auth }) {
                 <span className="txn-count">{filteredTransactions.length} transactions</span>
               </div>
               <TransactionTable transactions={filteredTransactions} loading={loading} />
-            </section>
-
-            <section className="card">
-              <div className="table-header">
-                <h2>Semantic Filter</h2>
-              </div>
-
-              <div className="filter-group" style={{ marginBottom: "0.6rem" }}>
-                {SF_TIME_CHIPS.map((chip) => (
-                  <button
-                    key={chip.value}
-                    className={`btn btn-filter ${sfTimeRange === chip.value ? "active" : ""}`}
-                    onClick={() => setSfTimeRange(chip.value)}
-                  >
-                    {chip.label}
-                  </button>
-                ))}
-              </div>
-
-              <div className="semantic-filter-row">
-                <input
-                  className="category-select"
-                  style={{ flex: 1 }}
-                  type="text"
-                  placeholder='e.g. "impulse purchases" or "work tools"'
-                  value={sfQuery}
-                  onChange={(e) => {
-                    setSfQuery(e.target.value);
-                    if (!e.target.value) setSfResults(null);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handleSemanticFilter();
-                  }}
-                />
-                <button
-                  className="btn btn-primary"
-                  onClick={() => handleSemanticFilter()}
-                  disabled={sfLoading || !sfQuery.trim()}
-                >
-                  {sfLoading ? "Filtering…" : "Filter"}
-                </button>
-              </div>
-
-              <div className="nl-chips" style={{ marginTop: "0.4rem" }}>
-                {CONCEPT_CHIPS.map((chip) => (
-                  <button
-                    key={chip}
-                    className="nl-chip"
-                    onClick={() => {
-                      setSfQuery(chip);
-                      handleSemanticFilter(chip);
-                    }}
-                  >
-                    {chip}
-                  </button>
-                ))}
-              </div>
-
-              <div className="semantic-threshold-row">
-                <label className="cluster-slider-label">
-                  <span>
-                    Similarity: <strong>{thresholdLabel(sfThreshold)}</strong>{" "}
-                    <span style={{ color: "#94a3b8" }}>({(sfThreshold * 100).toFixed(0)}%)</span>
-                  </span>
-                  <input
-                    type="range"
-                    min={50}
-                    max={95}
-                    step={5}
-                    value={sfThreshold * 100}
-                    onChange={(e) => setSfThreshold(Number(e.target.value) / 100)}
-                    className="cluster-slider"
-                  />
-                </label>
-              </div>
-
-              {sfError && <p className="global-error">{sfError}</p>}
-
-              {sfResults && (
-                <>
-                  <div className="table-header" style={{ marginTop: "0.75rem" }}>
-                    <span className="txn-count">
-                      {sfResults.total_matched === 0
-                        ? "No matching transactions"
-                        : `Showing ${sfResults.transactions.length} of ${sfResults.total_matched} above ${thresholdLabel(sfThreshold)} threshold`}
-                    </span>
-                  </div>
-
-                  {sfResults.suggested_concepts?.length > 0 && (
-                    <div style={{ marginBottom: "0.5rem" }}>
-                      <span style={{ fontSize: "0.8rem", color: "#64748b" }}>Try also: </span>
-                      <div className="nl-chips" style={{ display: "inline-flex", flexWrap: "wrap" }}>
-                        {sfResults.suggested_concepts.map((concept) => (
-                          <button
-                            key={concept}
-                            className="nl-chip"
-                            onClick={() => {
-                              setSfQuery(concept);
-                              handleSemanticFilter(concept);
-                            }}
-                          >
-                            {concept}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  <TransactionTable transactions={sfResults.transactions} loading={false} />
-                </>
-              )}
             </section>
 
           </>
